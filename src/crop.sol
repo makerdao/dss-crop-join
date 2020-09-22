@@ -117,4 +117,15 @@ contract CropJoin {
         balance[usr] = sub(balance[usr], wad);
         owed[usr] = wmul(balance[usr], share);
     }
+
+    function flee(uint wad) public {
+        address usr = msg.sender;
+
+        gem.transferFrom(address(this), usr, wad);
+        vat.slip(ilk, usr, -int(wad));
+
+        total = sub(total, wad);
+        balance[usr] = sub(balance[usr], wad);
+        owed[usr] = wmul(balance[usr], share);
+    }
 }

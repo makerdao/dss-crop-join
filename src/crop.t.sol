@@ -189,6 +189,25 @@ contract CropTest is DSTest {
         b.join(0);
         assertEq(comp.balanceOf(address(b)),  0 ether, "if nonzero we have a problem");
     }
+
+    // flee is an emergency exit with no rewards, check that these are
+    // not given out
+    function test_flee() public {
+        join.join(100 ether);
+        assertEq(comp.balanceOf(self), 0 ether, "no initial rewards");
+
+        comp.reward(10 ether);
+        join.join(0);
+        assertEq(comp.balanceOf(self), 10 ether, "rewards increase with reap");
+
+        comp.reward(10 ether);
+        join.exit(50 ether);
+        assertEq(comp.balanceOf(self), 20 ether, "rewards increase with exit");
+
+        comp.reward(10 ether);
+        join.flee(50 ether);
+        assertEq(comp.balanceOf(self), 20 ether, "rewards invariant over flee");
+    }
 }
 
 contract Usr {
