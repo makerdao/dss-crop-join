@@ -48,6 +48,8 @@ contract CropJoin {
     uint256     public share;
 
     mapping (address => uint) public owed;
+    mapping (address => uint) public balance;
+    uint256 public total;
 
     constructor(address vat_, bytes32 ilk_, address gem_,
                 address comp_, address comptroller_) public
@@ -77,11 +79,6 @@ contract CropJoin {
         z = mul(x, WAD) / y;
     }
 
-    function balance(address usr) internal view returns (uint) {
-        (uint ink,) = vat.urns(ilk, usr);
-        return vat.gem(ilk, usr) + ink;
-    }
-
     function crop() internal virtual returns (uint) {
         address[] memory ctokens = new address[](1);
         address[] memory users   = new address[](1);
@@ -94,28 +91,30 @@ contract CropJoin {
     }
 
     function join(uint256 wad) public {
-        uint income = crop();
-        uint total  = gem.balanceOf(address(this));
-        if (total > 0) share = add(share, wdiv(income, total));
+        if (total > 0) share = add(share, wdiv(crop(), total));
 
         address usr = msg.sender;
-        comp.transfer(msg.sender, sub(wmul(balance(usr), share), owed[usr]));
+        comp.transfer(msg.sender, sub(wmul(balance[usr], share), owed[usr]));
 
         gem.transferFrom(usr, address(this), wad);
         vat.slip(ilk, usr, int(wad));
-        owed[usr] = wmul(balance(usr), share);
+
+        total = add(total, wad);
+        balance[usr] = add(balance[usr], wad);
+        owed[usr] = wmul(balance[usr], share);
     }
 
     function exit(uint wad) public {
-        uint income = crop();
-        uint total  = gem.balanceOf(address(this));
-        if (total > 0) share = add(share, wdiv(income, total));
+        if (total > 0) share = add(share, wdiv(crop(), total));
 
         address usr = msg.sender;
-        comp.transfer(msg.sender, sub(wmul(balance(usr), share), owed[usr]));
+        comp.transfer(msg.sender, sub(wmul(balance[usr], share), owed[usr]));
 
-        vat.slip(ilk, usr, -int(wad));
-        owed[usr] = wmul(balance(usr), share);
         gem.transferFrom(address(this), usr, wad);
+        vat.slip(ilk, usr, -int(wad));
+
+        total = sub(total, wad);
+        balance[usr] = sub(balance[usr], wad);
+        owed[usr] = wmul(balance[usr], share);
     }
 }

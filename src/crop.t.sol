@@ -189,12 +189,6 @@ contract CropTest is DSTest {
         b.join(0);
         assertEq(comp.balanceOf(address(b)),  0 ether, "if nonzero we have a problem");
     }
-
-    // TODO
-    // We use the total usdc in the contract to calculate rewards,
-    // check that usdc received outside of join cannot break things
-    function test_usdc_donation() public {
-    }
 }
 
 contract Usr {
