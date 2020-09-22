@@ -86,7 +86,7 @@ contract CropJoin {
         users  [0] = address(this);
 
         uint prev = comp.balanceOf(address(this));
-        comptroller.claimComp(users, ctokens, true, true); // TODO: both true? are we borrower or supplier?
+        comptroller.claimComp(users, ctokens, true, true);
         return comp.balanceOf(address(this)) - prev;
     }
 
