@@ -5,6 +5,7 @@ import "ds-test/test.sol";
 import "./crop.sol";
 
 contract Token {
+    uint8 public decimals = 18;
     mapping (address => uint) public balanceOf;
     constructor(uint wad) public {
         balanceOf[msg.sender] = wad;
@@ -64,6 +65,7 @@ contract CropTest is DSTest {
         vat  = new Vat();
         join = new CropJoin( address(vat)
                            , ilk
+                           , address(usdc)
                            , address(usdc)
                            , address(comp)
                            , address(comp)

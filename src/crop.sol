@@ -5,6 +5,7 @@ interface ERC20 {
     function transferFrom(address,address,uint) external;
     function balanceOf(address) external returns (uint);
     function approve(address,uint) external;
+    function decimals() external returns (uint8);
 }
 
 interface CToken is ERC20{
@@ -56,7 +57,10 @@ contract Vat {
 contract CropJoin {
     Vat         public vat;
     bytes32     public ilk;
-    CToken      public gem;
+    ERC20       public gem;
+    uint256     public dec;
+
+    CToken      public cgem;
     ERC20       public comp;
     Comptroller public comptroller;
 
@@ -67,11 +71,15 @@ contract CropJoin {
     mapping (address => uint) public balance; // gems per user
 
     constructor(address vat_, bytes32 ilk_, address gem_,
-                address comp_, address comptroller_) public
+                address cgem_, address comp_, address comptroller_) public
     {
         vat = Vat(vat_);
         ilk = ilk_;
-        gem = CToken(gem_);
+        gem = ERC20(gem_);
+        dec = gem.decimals();
+        require(dec <= 18);
+
+        cgem = CToken(cgem_);
         comp = ERC20(comp_);
         comptroller = Comptroller(comptroller_);
     }
@@ -97,7 +105,7 @@ contract CropJoin {
     function crop() internal virtual returns (uint) {
         address[] memory ctokens = new address[](1);
         address[] memory users   = new address[](1);
-        ctokens[0] = address(gem);
+        ctokens[0] = address(cgem);
         users  [0] = address(this);
 
         uint prev = comp.balanceOf(address(this));
@@ -110,36 +118,38 @@ contract CropJoin {
     // cusdc: 8 decimals
     // comp: 18 decimals
     // gem:  18 decimals
-    function join(uint256 wad /* cusdc */) public {
+    function join(uint256 val) public {
+        uint wad = mul(val, 10 ** (18 - dec));
+        require(int(wad) >= 0);
+
         if (total > 0) share = add(share, wdiv(crop(), total));
 
         address usr = msg.sender;
         comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr]));
-
-        if (int(wad) > 0) {
+        if (wad > 0) {
             gem.transferFrom(usr, address(this), wad);
             vat.slip(ilk, usr, int(wad));
             total = add(total, wad);
             balance[usr] = add(balance[usr], wad);
         }
-
         crops[usr] = wmul(balance[usr], share);
     }
 
-    function exit(uint wad) public {
+    function exit(uint val) public {
+        uint wad = mul(val, 10 ** (18 - dec));
+        require(wad <= 2 ** 255);
+
         if (total > 0) share = add(share, wdiv(crop(), total));
 
         address usr = msg.sender;
         comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr]));
-
-        if (-int(wad) < 0) {
+        if (wad < 0) {
             gem.transferFrom(address(this), usr, wad);
             vat.slip(ilk, usr, -int(wad));
 
             total = sub(total, wad);
             balance[usr] = sub(balance[usr], wad);
         }
-
         crops[usr] = wmul(balance[usr], share);
     }
 
@@ -157,7 +167,7 @@ contract CropJoin {
     // move to constructor
     function init() public {
         address[] memory ctokens = new address[](1);
-        ctokens[0] = address(gem);
+        ctokens[0] = address(cgem);
         comptroller.enterMarkets(ctokens);
     }
     // todo: math, ctoken decimals
@@ -173,39 +183,41 @@ contract CropJoin {
     // n: how many times to repeat a max borrow loop before the
     //    specified borrow/mint
     function wind(uint borrow_, uint n) public {
+        cgem.mint(gem.balanceOf(address(this)));
         uint max_borrow;
         for (uint i=0; i < n; i++) {
-            max_borrow = sub(wmul(gem.balanceOfUnderlying(address(this)), 0.75 ether),
-                             gem.borrowBalanceCurrent(address(this)));
-            require(gem.borrow(max_borrow) == 0);
-            require(gem.mint(max_borrow) == 0);
+            max_borrow = sub(wmul(cgem.balanceOfUnderlying(address(this)), 0.75 ether),
+                             cgem.borrowBalanceCurrent(address(this)));
+            require(cgem.borrow(max_borrow) == 0);
+            require(cgem.mint(max_borrow) == 0);
         }
-        require(gem.borrow(borrow_) == 0);
-        require(gem.mint(borrow_) == 0);
-        uint u = wdiv(gem.borrowBalanceCurrent(address(this)),  // todo: correct div decimals
-                      gem.balanceOfUnderlying(address(this)));
+        require(cgem.borrow(borrow_) == 0);
+        require(cgem.mint(borrow_) == 0);
+        uint u = wdiv(cgem.borrowBalanceCurrent(address(this)),  // todo: correct div decimals
+                      cgem.balanceOfUnderlying(address(this)));
         require(u < 0.675 ether); // 90% utilization. TODO: dynamic collateral factor?
     }
     // repay_: how much underlying to repay (6 decimals)
     // n: how many times to repeat a max repay loop before the
     //    specified redeem/repay
     function unwind(uint repay_, uint n) public {
-        uint u = wdiv(gem.borrowBalanceCurrent(address(this)),
-                      gem.balanceOfUnderlying(address(this)));
+        cgem.mint(gem.balanceOf(address(this)));
+        uint u = wdiv(cgem.borrowBalanceCurrent(address(this)),
+                      cgem.balanceOfUnderlying(address(this)));
         require(u > 0.675 ether); // 90% utilization
 
         uint max_repay;
         for (uint i=0; i < n; i++) {
-            max_repay = sub(gem.balanceOfUnderlying(address(this)),
-                            wdiv(gem.borrowBalanceCurrent(address(this)),
+            max_repay = sub(cgem.balanceOfUnderlying(address(this)),
+                            wdiv(cgem.borrowBalanceCurrent(address(this)),
                                  0.75 ether));
-            require(gem.redeemUnderlying(max_repay) == 0);
-            require(gem.repayBorrow(max_repay) == 0);
+            require(cgem.redeemUnderlying(max_repay) == 0);
+            require(cgem.repayBorrow(max_repay) == 0);
         }
-        require(gem.redeemUnderlying(repay_) == 0);
-        require(gem.repayBorrow(repay_) == 0);
-        uint u_ = wdiv(gem.borrowBalanceCurrent(address(this)),
-                       gem.balanceOfUnderlying(address(this)));
+        require(cgem.redeemUnderlying(repay_) == 0);
+        require(cgem.repayBorrow(repay_) == 0);
+        uint u_ = wdiv(cgem.borrowBalanceCurrent(address(this)),
+                       cgem.balanceOfUnderlying(address(this)));
         require(u_ < u);  // 88% utilization
     }
 }
