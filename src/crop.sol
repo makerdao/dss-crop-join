@@ -45,11 +45,12 @@ contract CropJoin {
     ERC20       public gem;
     ERC20       public comp;
     Comptroller public comptroller;
-    uint256     public share;
 
-    mapping (address => uint) public owed;
-    mapping (address => uint) public balance;
-    uint256 public total;
+    uint256     public share;  // crops per gem
+    uint256     public total;  // total gems
+
+    mapping (address => uint) public crops;   // crops per user
+    mapping (address => uint) public balance; // gems per user
 
     constructor(address vat_, bytes32 ilk_, address gem_,
                 address comp_, address comptroller_) public
@@ -94,28 +95,33 @@ contract CropJoin {
         if (total > 0) share = add(share, wdiv(crop(), total));
 
         address usr = msg.sender;
-        comp.transfer(msg.sender, sub(wmul(balance[usr], share), owed[usr]));
+        comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr]));
 
-        gem.transferFrom(usr, address(this), wad);
-        vat.slip(ilk, usr, int(wad));
+        if (int(wad) > 0) {
+            gem.transferFrom(usr, address(this), wad);
+            vat.slip(ilk, usr, int(wad));
+            total = add(total, wad);
+            balance[usr] = add(balance[usr], wad);
+        }
 
-        total = add(total, wad);
-        balance[usr] = add(balance[usr], wad);
-        owed[usr] = wmul(balance[usr], share);
+        crops[usr] = wmul(balance[usr], share);
     }
 
     function exit(uint wad) public {
         if (total > 0) share = add(share, wdiv(crop(), total));
 
         address usr = msg.sender;
-        comp.transfer(msg.sender, sub(wmul(balance[usr], share), owed[usr]));
+        comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr]));
 
-        gem.transferFrom(address(this), usr, wad);
-        vat.slip(ilk, usr, -int(wad));
+        if (-int(wad) < 0) {
+            gem.transferFrom(address(this), usr, wad);
+            vat.slip(ilk, usr, -int(wad));
 
-        total = sub(total, wad);
-        balance[usr] = sub(balance[usr], wad);
-        owed[usr] = wmul(balance[usr], share);
+            total = sub(total, wad);
+            balance[usr] = sub(balance[usr], wad);
+        }
+
+        crops[usr] = wmul(balance[usr], share);
     }
 
     function flee(uint wad) public {
