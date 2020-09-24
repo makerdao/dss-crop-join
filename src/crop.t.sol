@@ -256,6 +256,9 @@ interface Hevm {
     function store(address,bytes32,bytes32) external;
 }
 
+
+// Here we run the basic CropTest tests against mainnet, overriding
+// the Comptroller to accrue us COMP on demand
 contract CompTest is CropTest {
     Hevm hevm = Hevm(address(bytes20(uint160(uint256(keccak256('hevm cheat code'))))));
 
