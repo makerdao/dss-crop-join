@@ -178,60 +178,77 @@ contract CropJoin {
         crops[usr] = wmul(balance[usr], share);
     }
 
-    // move to constructor
-    function init() public {
-        address[] memory ctokens = new address[](1);
-        ctokens[0] = address(cgem);
-        comptroller.enterMarkets(ctokens);
-    }
-    // todo: math, ctoken decimals
-    //       cUSDC 8 USDC 6
-    // oneCTokenInUnderlying = exchangeRateCurrent
-    //                       / (1 * 10 ^ (18 + underlyingDecimals - cTokenDecimals))
     // todo: tests, simple mock
     // todo: tests, mainnet fork
+    // todo: flash loan alternative to wind - check gas of wind
 
-    // todo: ctoken.accrueInterest() first, then use borrowBalanceStored
+    // todo: compound liquidations
+    // liquidation:
+    //   - cTokens are seized from our supply
+    //   - balanceOfUnderlying decreases.
+    //   - borrowBalance also decreases,
+    //   - now under 100% utilization
+    //   - less underlying than before => usdc amount down
+    //   - user balances / total must be scaled down
+    //   - oracle must report lower price
+
+    // todo: doesn't interest accumulation reduce the value of the gem?
+    // todo: demonstrate with a test
+    // interest:
+    //   - supply / borrow nets interest rate
+    //   - comp income offsets interest
+    //   - comp goes direct to users
+    //   - total usdc in adapter must be decreasing over time
+    //   - have to constantly adjust balances / total downwards
+    //     - balance[usr]      <-- scaling factor
+    //     - total             <-- scaling factor
+    //     - vat.gem, vat.ink  <-- spot adjustment
+    //   - same / similar process to liquidation (?)
+
+    // todo: update cd on each wind / unwind?
+    uint256 public cf = 0.75  ether;  // usdc max collateral factor
+    uint256 public tf = 0.675 ether;  // target collateral factor
 
     // borrow_: how much underlying to borrow (6 decimals)
     // n: how many times to repeat a max borrow loop before the
     //    specified borrow/mint
     function wind(uint borrow_, uint n) public {
-        cgem.mint(gem.balanceOf(address(this)));
+        require(cgem.accrueInterest() == 0);
+        require(cgem.mint(gem.balanceOf(address(this))) == 0);
         uint max_borrow;
         for (uint i=0; i < n; i++) {
-            max_borrow = sub(wmul(cgem.balanceOfUnderlying(address(this)), 0.75 ether),
-                             cgem.borrowBalanceCurrent(address(this)));
+            max_borrow = sub(wmul(cgem.balanceOfUnderlying(address(this)), cf),
+                             cgem.borrowBalanceStored(address(this)));
             require(cgem.borrow(max_borrow) == 0);
             require(cgem.mint(max_borrow) == 0);
         }
         require(cgem.borrow(borrow_) == 0);
         require(cgem.mint(borrow_) == 0);
-        uint u = wdiv(cgem.borrowBalanceCurrent(address(this)),  // todo: correct div decimals
+        uint u = ddiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
-        require(u < 0.675 ether); // 90% utilization. TODO: dynamic collateral factor?
+        require(u < tf);
     }
     // repay_: how much underlying to repay (6 decimals)
     // n: how many times to repeat a max repay loop before the
     //    specified redeem/repay
     function unwind(uint repay_, uint n) public {
-        cgem.mint(gem.balanceOf(address(this)));
-        uint u = wdiv(cgem.borrowBalanceCurrent(address(this)),
+        require(cgem.accrueInterest() == 0);
+        require(cgem.mint(gem.balanceOf(address(this))) == 0);
+        uint u = ddiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
-        require(u > 0.675 ether); // 90% utilization
+        require(u > tf);
 
         uint max_repay;
-        for (uint i=0; i < n; i++) {
+        for (uint i=0; i < n ; i++) {
             max_repay = sub(cgem.balanceOfUnderlying(address(this)),
-                            wdiv(cgem.borrowBalanceCurrent(address(this)),
-                                 0.75 ether));
+                            wdiv(cgem.borrowBalanceStored(address(this)), cf));
             require(cgem.redeemUnderlying(max_repay) == 0);
             require(cgem.repayBorrow(max_repay) == 0);
         }
         require(cgem.redeemUnderlying(repay_) == 0);
         require(cgem.repayBorrow(repay_) == 0);
-        uint u_ = wdiv(cgem.borrowBalanceCurrent(address(this)),
+        uint u_ = ddiv(cgem.borrowBalanceStored(address(this)),
                        cgem.balanceOfUnderlying(address(this)));
-        require(u_ < u);  // 88% utilization
+        require(u_ < u);
     }
 }
