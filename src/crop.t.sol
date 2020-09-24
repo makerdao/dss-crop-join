@@ -5,36 +5,47 @@ import "ds-test/test.sol";
 import "./crop.sol";
 
 contract Token {
-    uint8 public decimals = 18;
+    uint8 public decimals;
     mapping (address => uint) public balanceOf;
-    constructor(uint wad) public {
+    constructor(uint8 dec, uint wad) public {
+        decimals = dec;
         balanceOf[msg.sender] = wad;
     }
-    function transfer(address usr, uint wad) public {
+    function transfer(address usr, uint wad) public returns (bool) {
         require(balanceOf[msg.sender] >= wad, "transfer/insufficient");
         balanceOf[msg.sender] -= wad;
         balanceOf[usr] += wad;
+        return true;
     }
-    function transferFrom(address src, address dst, uint wad) public {
+    function transferFrom(address src, address dst, uint wad) public returns (bool) {
         require(balanceOf[src] >= wad, "transferFrom/insufficient");
         balanceOf[src] -= wad;
+        balanceOf[dst] += wad;
+        return true;
+    }
+    function mint(address dst, uint wad) public {
         balanceOf[dst] += wad;
     }
 }
 
-contract Troll is Token(0) {
+contract Troll is Token(18, 0) {
+    Token comp;
+    constructor(address comp_) public {
+        comp = Token(comp_);
+    }
     uint256 public rewards;
     function reward(uint val) public {
         rewards += val;
     }
     function claimComp(address[] memory, address[] memory, bool, bool) public {
-        balanceOf[msg.sender] += rewards;
+        comp.mint(msg.sender, rewards);
         rewards = 0;
     }
     function claimComp() public {
-        balanceOf[msg.sender] += rewards;
+        comp.mint(msg.sender, rewards);
         rewards = 0;
     }
+    function enterMarkets(address[] memory _) public {}
 }
 
 contract CropTest is DSTest {
@@ -52,24 +63,28 @@ contract CropTest is DSTest {
     }
 
     Token    usdc;
-    Troll    comp;
-    Vat      vat;
+    Token    cusdc;
+    Token    comp;
+    Troll    troll;
+    MockVat  vat;
     CropJoin join;
     address  self;
     bytes32  ilk = "cusdc";
 
     function setUp() public {
-        self = address(this);
-        usdc = new Token(1000 ether);
-        comp = new Troll();
-        vat  = new Vat();
-        join = new CropJoin( address(vat)
-                           , ilk
-                           , address(usdc)
-                           , address(usdc)
-                           , address(comp)
-                           , address(comp)
-                           );
+        self  = address(this);
+        usdc  = new Token(6, 1000 ether);
+        cusdc = new Token(8,  0);
+        comp  = new Token(18, 0);
+        troll = new Troll(address(comp));
+        vat   = new MockVat();
+        join  = new CropJoin( address(vat)
+                            , ilk
+                            , address(usdc)
+                            , address(cusdc)
+                            , address(comp)
+                            , address(troll)
+                            );
     }
 
     function test_simple_multi_user() public {
@@ -81,7 +96,7 @@ contract CropTest is DSTest {
         a.join(60 ether);
         b.join(40 ether);
 
-        comp.reward(50 ether);
+        troll.reward(50 ether);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 ether);
@@ -100,7 +115,7 @@ contract CropTest is DSTest {
         a.join(60 ether);
         b.join(40 ether);
 
-        comp.reward(50 ether);
+        troll.reward(50 ether);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 ether);
@@ -118,7 +133,7 @@ contract CropTest is DSTest {
         join.join(100 ether);
         assertEq(comp.balanceOf(self), 0 ether, "no initial rewards");
 
-        comp.reward(10 ether);
+        troll.reward(10 ether);
         join.join(0);
         assertEq(comp.balanceOf(self), 10 ether, "rewards increase with reap");
 
@@ -131,7 +146,7 @@ contract CropTest is DSTest {
         join.join(50 ether);
 
         assertEq(comp.balanceOf(self), 10 ether);
-        comp.reward(10 ether);
+        troll.reward(10 ether);
         join.join(10 ether);
         assertEq(comp.balanceOf(self), 20 ether);
     }
@@ -144,7 +159,7 @@ contract CropTest is DSTest {
         a.join(60 ether);
         b.join(40 ether);
 
-        comp.reward(50 ether);
+        troll.reward(50 ether);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 ether);
@@ -158,13 +173,13 @@ contract CropTest is DSTest {
         assertEq(comp.balanceOf(address(a)), 30 ether);
         assertEq(comp.balanceOf(address(b)), 20 ether);
 
-        comp.reward(50 ether);
+        troll.reward(50 ether);
         a.join(20 ether);
         a.join(0); b.reap();
         assertEq(comp.balanceOf(address(a)), 60 ether);
         assertEq(comp.balanceOf(address(b)), 40 ether);
 
-        comp.reward(30 ether);
+        troll.reward(30 ether);
         a.join(0); b.reap();
         assertEq(comp.balanceOf(address(a)), 80 ether);
         assertEq(comp.balanceOf(address(b)), 50 ether);
@@ -180,13 +195,13 @@ contract CropTest is DSTest {
         usdc.transfer(address(a), 200 ether);
 
         a.join(100 ether);
-        comp.reward(50 ether);
+        troll.reward(50 ether);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 50 ether);
         assertEq(comp.balanceOf(address(b)),  0 ether);
 
-        comp.reward(50 ether);
+        troll.reward(50 ether);
         vat.flux(ilk, address(a), address(b), 50 ether);
         b.join(0);
         assertEq(comp.balanceOf(address(b)),  0 ether, "if nonzero we have a problem");

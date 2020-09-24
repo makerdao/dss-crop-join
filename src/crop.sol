@@ -1,17 +1,19 @@
 pragma solidity ^0.6.7;
 
 interface ERC20 {
-    function transfer(address,uint) external;
-    function transferFrom(address,address,uint) external;
+    function transfer(address,uint) external returns (bool);
+    function transferFrom(address,address,uint) external returns (bool);
     function balanceOf(address) external returns (uint);
-    function approve(address,uint) external;
+    function approve(address,uint) external returns (bool);
     function decimals() external returns (uint8);
 }
 
-interface CToken is ERC20{
+interface CToken is ERC20 {
     function balanceOfUnderlying(address owner) external returns (uint);
     function borrowBalanceCurrent(address account) external returns (uint);
+    function borrowBalanceStored(address account) external returns (uint);
     function exchangeRateCurrent() external returns (uint);
+    function accrueInterest() external returns (uint);
 
     function mint(uint mintAmount) external returns (uint);
     function redeem(uint redeemTokens) external returns (uint);
@@ -26,7 +28,12 @@ interface Comptroller {
     function compAccrued(address) external returns (uint);
 }
 
-contract Vat {
+interface VatLike {
+    function slip(bytes32 ilk, address usr, int256 wad) external;
+    function flux(bytes32 ilk, address src, address dst, uint256 wad) external;
+}
+
+contract MockVat is VatLike {
     struct Urn {
         uint256 ink;   // Locked Collateral  [wad]
         uint256 art;   // Normalised Debt    [wad]
@@ -44,10 +51,10 @@ contract Vat {
     function sub(uint x, uint y) internal pure returns (uint z) {
         require((z = x - y) <= x);
     }
-    function slip(bytes32 ilk, address usr, int256 wad) external {
+    function slip(bytes32 ilk, address usr, int256 wad) external override {
         gem[ilk][usr] = add(gem[ilk][usr], wad);
     }
-    function flux(bytes32 ilk, address src, address dst, uint256 wad) external {
+    function flux(bytes32 ilk, address src, address dst, uint256 wad) external override {
         gem[ilk][src] = sub(gem[ilk][src], wad);
         gem[ilk][dst] = add(gem[ilk][dst], wad);
     }
@@ -55,7 +62,7 @@ contract Vat {
 
 // receives tokens and shares them among holders
 contract CropJoin {
-    Vat         public vat;
+    VatLike     public vat;
     bytes32     public ilk;
     ERC20       public gem;
     uint256     public dec;
@@ -73,19 +80,22 @@ contract CropJoin {
     constructor(address vat_, bytes32 ilk_, address gem_,
                 address cgem_, address comp_, address comptroller_) public
     {
-        vat = Vat(vat_);
+        vat = VatLike(vat_);
         ilk = ilk_;
         gem = ERC20(gem_);
         dec = gem.decimals();
         require(dec <= 18);
+        require(10 ** dec == BASE);
 
         cgem = CToken(cgem_);
         comp = ERC20(comp_);
         comptroller = Comptroller(comptroller_);
+
+        // address[] memory ctokens = new address[](1);
+        // ctokens[0] = address(cgem_);
+        // comptroller.enterMarkets(ctokens);
     }
 
-    // TODO: decimals. usdc/cusdc has 8. comp has 18.
-    uint constant WAD = 10 ** 18;
     function add(uint x, uint y) public pure returns (uint z) {
         require((z = x + y) >= x, "ds-math-add-overflow");
     }
@@ -95,11 +105,16 @@ contract CropJoin {
     function mul(uint x, uint y) public pure returns (uint z) {
         require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
     }
+    uint256 constant WAD  = 10 ** 18;
+    uint256 constant BASE = 10 ** 6;
     function wmul(uint x, uint y) public pure returns (uint z) {
         z = mul(x, y) / WAD;
     }
     function wdiv(uint x, uint y) public pure returns (uint z) {
         z = mul(x, WAD) / y;
+    }
+    function ddiv(uint x, uint y) public pure returns (uint z) {
+        z = mul(x, BASE) / y;
     }
 
     function crop() internal virtual returns (uint) {
@@ -113,7 +128,6 @@ contract CropJoin {
         return comp.balanceOf(address(this)) - prev;
     }
 
-    // todo cusdc -> wad conversions
     // usdc:  6 decimals
     // cusdc: 8 decimals
     // comp: 18 decimals
@@ -125,9 +139,9 @@ contract CropJoin {
         if (total > 0) share = add(share, wdiv(crop(), total));
 
         address usr = msg.sender;
-        comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr]));
+        require(comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr])));
         if (wad > 0) {
-            gem.transferFrom(usr, address(this), wad);
+            require(gem.transferFrom(usr, address(this), val));
             vat.slip(ilk, usr, int(wad));
             total = add(total, wad);
             balance[usr] = add(balance[usr], wad);
@@ -142,9 +156,9 @@ contract CropJoin {
         if (total > 0) share = add(share, wdiv(crop(), total));
 
         address usr = msg.sender;
-        comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr]));
-        if (wad < 0) {
-            gem.transferFrom(address(this), usr, wad);
+        require(comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr])));
+        if (wad > 0) {
+            require(gem.transferFrom(address(this), usr, val));
             vat.slip(ilk, usr, -int(wad));
 
             total = sub(total, wad);
@@ -156,7 +170,7 @@ contract CropJoin {
     function flee(uint wad) public {
         address usr = msg.sender;
 
-        gem.transferFrom(address(this), usr, wad);
+        require(gem.transferFrom(address(this), usr, wad));
         vat.slip(ilk, usr, -int(wad));
 
         total = sub(total, wad);
