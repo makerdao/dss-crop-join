@@ -35,17 +35,17 @@ contract Troll {
     constructor(address comp_) public {
         comp = Token(comp_);
     }
-    uint256 public rewards;
-    function reward(uint val) public {
-        rewards += val;
+    mapping (address => uint) public compAccrued;
+    function reward(address usr, uint wad) public {
+        compAccrued[usr] = wad;
     }
     function claimComp(address[] memory, address[] memory, bool, bool) public {
-        comp.mint(msg.sender, rewards);
-        rewards = 0;
+        comp.mint(msg.sender, compAccrued[msg.sender]);
+        compAccrued[msg.sender] = 0;
     }
     function claimComp() public {
-        comp.mint(msg.sender, rewards);
-        rewards = 0;
+        comp.mint(msg.sender, compAccrued[msg.sender]);
+        compAccrued[msg.sender] = 0;
     }
     function enterMarkets(address[] memory _) public {}
 }
@@ -89,6 +89,15 @@ contract CropTest is DSTest {
                             );
     }
 
+    function reward(address usr, uint wad) internal virtual {
+        troll.reward(usr, wad);
+    }
+
+    function test_reward() public {
+        reward(self, 100 ether);
+        assertEq(troll.compAccrued(self), 100 ether);
+    }
+
     function init_user() internal returns (Usr a, Usr b) {
         a = new Usr(join);
         b = new Usr(join);
@@ -106,7 +115,7 @@ contract CropTest is DSTest {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        troll.reward(50 * 1e18);
+        reward(address(join), 50 * 1e18);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
@@ -122,7 +131,7 @@ contract CropTest is DSTest {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        troll.reward(50 * 1e18);
+        reward(address(join), 50 * 1e18);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
@@ -137,10 +146,12 @@ contract CropTest is DSTest {
         assertEq(comp.balanceOf(address(b)), 20 * 1e18);
     }
     function test_simple_join_exit() public {
+        usdc.approve(address(join), uint(-1));
+
         join.join(100 * 1e6);
         assertEq(comp.balanceOf(self), 0 * 1e18, "no initial rewards");
 
-        troll.reward(10 * 1e18);
+        reward(address(join), 10 * 1e18);
         join.join(0);
         assertEq(comp.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
@@ -153,7 +164,7 @@ contract CropTest is DSTest {
         join.join(50 * 1e6);
 
         assertEq(comp.balanceOf(self), 10 * 1e18);
-        troll.reward(10 * 1e18);
+        reward(address(join), 10 * 1e18);
         join.join(10 * 1e6);
         assertEq(comp.balanceOf(self), 20 * 1e18);
     }
@@ -163,7 +174,7 @@ contract CropTest is DSTest {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        troll.reward(50 * 1e18);
+        reward(address(join), 50 * 1e18);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
@@ -177,13 +188,13 @@ contract CropTest is DSTest {
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
         assertEq(comp.balanceOf(address(b)), 20 * 1e18);
 
-        troll.reward(50 * 1e18);
+        reward(address(join), 50 * 1e18);
         a.join(20 * 1e6);
         a.join(0); b.reap();
         assertEq(comp.balanceOf(address(a)), 60 * 1e18);
         assertEq(comp.balanceOf(address(b)), 40 * 1e18);
 
-        troll.reward(30 * 1e18);
+        reward(address(join), 30 * 1e18);
         a.join(0); b.reap();
         assertEq(comp.balanceOf(address(a)), 80 * 1e18);
         assertEq(comp.balanceOf(address(b)), 50 * 1e18);
@@ -197,13 +208,13 @@ contract CropTest is DSTest {
         (Usr a, Usr b) = init_user();
 
         a.join(100 * 1e6);
-        troll.reward(50 * 1e18);
+        reward(address(join), 50 * 1e18);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 50 * 1e18);
         assertEq(comp.balanceOf(address(b)),  0 * 1e18);
 
-        troll.reward(50 * 1e18);
+        reward(address(join), 50 * 1e18);
         vat.flux(ilk, address(a), address(b), 50 * 1e18);
         b.join(0);
         assertEq(comp.balanceOf(address(b)),  0 * 1e18, "if nonzero we have a problem");
@@ -212,18 +223,20 @@ contract CropTest is DSTest {
     // flee is an emergency exit with no rewards, check that these are
     // not given out
     function test_flee() public {
+        usdc.approve(address(join), uint(-1));
+
         join.join(100 * 1e6);
         assertEq(comp.balanceOf(self), 0 * 1e18, "no initial rewards");
 
-        troll.reward(10 * 1e18);
+        reward(address(join), 10 * 1e18);
         join.join(0);
         assertEq(comp.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
-        troll.reward(10 * 1e18);
+        reward(address(join), 10 * 1e18);
         join.exit(50 * 1e6);
         assertEq(comp.balanceOf(self), 20 * 1e18, "rewards increase with exit");
 
-        troll.reward(10 * 1e18);
+        reward(address(join), 10 * 1e18);
         join.flee(50 * 1e6);
         assertEq(comp.balanceOf(self), 20 * 1e18, "rewards invariant over flee");
     }
@@ -259,6 +272,15 @@ contract CompTest is CropTest {
             address(usdc),
             keccak256(abi.encode(address(this), uint256(9))),
             bytes32(uint(1000 * 1e6))
+        );
+    }
+
+    function reward(address usr, uint wad) internal override {
+        // override compAccrued in the comptroller
+        hevm.store(
+            address(troll),
+            keccak256(abi.encode(usr, uint256(20))),
+            bytes32(wad)
         );
     }
 
