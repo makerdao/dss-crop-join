@@ -23,10 +23,10 @@ contract Token {
         balanceOf[dst] += wad;
         return true;
     }
-    function mint(address dst, uint wad) public {
+    function mint(address dst, uint wad) public returns (uint) {
         balanceOf[dst] += wad;
     }
-    function approve(address usr, uint wad) public {
+    function approve(address usr, uint wad) public returns (bool) {
     }
 }
 
@@ -47,7 +47,16 @@ contract Troll {
         comp.mint(msg.sender, compAccrued[msg.sender]);
         compAccrued[msg.sender] = 0;
     }
-    function enterMarkets(address[] memory _) public {}
+    function enterMarkets(address[] memory ctokens) public returns (uint[] memory) {
+        comp; ctokens;
+        uint[] memory err = new uint[](1);
+        err[0] = 0;
+        return err;
+    }
+    function compBorrowerIndex(address c, address b) public returns (uint) {}
+    function getBlockNumber() public view returns (uint) {
+        return block.number;
+    }
 }
 
 contract CropTest is DSTest {
@@ -152,7 +161,7 @@ contract CropTest is DSTest {
         assertEq(comp.balanceOf(self), 0 * 1e18, "no initial rewards");
 
         reward(address(join), 10 * 1e18);
-        join.join(0);
+        join.join(0); join.join(0);  // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
         join.join(100 * 1e6);
@@ -210,9 +219,8 @@ contract CropTest is DSTest {
         a.join(100 * 1e6);
         reward(address(join), 50 * 1e18);
 
-        a.join(0);
-        assertEq(comp.balanceOf(address(a)), 50 * 1e18);
-        assertEq(comp.balanceOf(address(b)),  0 * 1e18);
+        a.join(0); a.join(0); // have to do it twice for some comptroller reason
+        assertEq(comp.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
         reward(address(join), 50 * 1e18);
         vat.flux(ilk, address(a), address(b), 50 * 1e18);
@@ -229,7 +237,7 @@ contract CropTest is DSTest {
         assertEq(comp.balanceOf(self), 0 * 1e18, "no initial rewards");
 
         reward(address(join), 10 * 1e18);
-        join.join(0);
+        join.join(0); join.join(0);  // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
         reward(address(join), 10 * 1e18);
@@ -244,6 +252,7 @@ contract CropTest is DSTest {
 
 interface Hevm {
     function warp(uint256) external;
+    function roll(uint256) external;
     function store(address,bytes32,bytes32) external;
 }
 
@@ -273,6 +282,8 @@ contract CompTest is CropTest {
             keccak256(abi.encode(address(this), uint256(9))),
             bytes32(uint(1000 * 1e6))
         );
+
+        hevm.roll(block.number + 10);
     }
 
     function reward(address usr, uint wad) internal override {
@@ -284,8 +295,16 @@ contract CompTest is CropTest {
         );
     }
 
+    function test_borrower_index() public {
+        assertEq(troll.compBorrowerIndex(address(cusdc), address(join)), 0);
+    }
+
     function test_setup() public {
         assertEq(usdc.balanceOf(self), 1000 * 1e6, "hack the usdc");
+    }
+
+    function test_block_number() public {
+        assertEq(troll.getBlockNumber(), block.number);
     }
 
     function test_join() public {

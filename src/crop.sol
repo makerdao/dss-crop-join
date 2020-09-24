@@ -1,31 +1,57 @@
 pragma solidity ^0.6.7;
 
 interface ERC20 {
-    function transfer(address,uint) external returns (bool);
-    function transferFrom(address,address,uint) external returns (bool);
-    function balanceOf(address) external returns (uint);
-    function approve(address,uint) external returns (bool);
+    function balanceOf(address owner) external view returns (uint);
+    function transfer(address dst, uint amount) external returns (bool);
+    function transferFrom(address src, address dst, uint amount) external returns (bool);
+    function approve(address spender, uint amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint);
     function decimals() external returns (uint8);
 }
 
 interface CToken is ERC20 {
+    function admin() external returns (address);
+    function pendingAdmin() external returns (address);
+    function comptroller() external returns (address);
+    function interestRateModel() external returns (address);
+    function initialExchangeRateMantissa() external returns (uint);
+    function reserveFactorMantissa() external returns (uint);
+    function accrualBlockNumber() external returns (uint);
+    function borrowIndex() external returns (uint);
+    function totalBorrows() external returns (uint);
+    function totalReserves() external returns (uint);
+    function totalSupply() external returns (uint);
+    function accountTokens(address) external returns (uint);
+    function transferAllowances(address,address) external returns (uint);
+
     function balanceOfUnderlying(address owner) external returns (uint);
+    function getAccountSnapshot(address account) external view returns (uint, uint, uint, uint);
+    function borrowRatePerBlock() external view returns (uint);
+    function supplyRatePerBlock() external view returns (uint);
+    function totalBorrowsCurrent() external returns (uint);
     function borrowBalanceCurrent(address account) external returns (uint);
-    function borrowBalanceStored(address account) external returns (uint);
+    function borrowBalanceStored(address account) external view returns (uint);
     function exchangeRateCurrent() external returns (uint);
+    function exchangeRateStored() external view returns (uint);
+    function getCash() external view returns (uint);
     function accrueInterest() external returns (uint);
+    function seize(address liquidator, address borrower, uint seizeTokens) external returns (uint);
 
     function mint(uint mintAmount) external returns (uint);
     function redeem(uint redeemTokens) external returns (uint);
     function redeemUnderlying(uint redeemAmount) external returns (uint);
     function borrow(uint borrowAmount) external returns (uint);
     function repayBorrow(uint repayAmount) external returns (uint);
+    function repayBorrowBehalf(address borrower, uint repayAmount) external returns (uint);
+    function liquidateBorrow(address borrower, uint repayAmount, CToken cTokenCollateral) external returns (uint);
 }
 
 interface Comptroller {
     function enterMarkets(address[] calldata cTokens) external returns (uint[] memory);
     function claimComp(address[] calldata holders, address[] calldata cTokens, bool borrowers, bool suppliers) external;
     function compAccrued(address) external returns (uint);
+    function compBorrowerIndex(address,address) external returns (uint);
+    function compSupplierIndex(address,address) external returns (uint);
 }
 
 interface VatLike {
@@ -91,9 +117,13 @@ contract CropJoin {
         comp = ERC20(comp_);
         comptroller = Comptroller(comptroller_);
 
-        // address[] memory ctokens = new address[](1);
-        // ctokens[0] = address(cgem_);
-        // comptroller.enterMarkets(ctokens);
+        gem.approve(address(cgem), uint(-1));
+
+        address[] memory ctokens = new address[](1);
+        ctokens[0] = address(cgem);
+        uint256[] memory errors = new uint[](1);
+        errors = comptroller.enterMarkets(ctokens);
+        require(errors[0] == 0);
     }
 
     function add(uint x, uint y) public pure returns (uint z) {
@@ -124,7 +154,7 @@ contract CropJoin {
         users  [0] = address(this);
 
         uint prev = comp.balanceOf(address(this));
-        comptroller.claimComp(users, ctokens, true, true);
+        comptroller.claimComp(users, ctokens, true, false);
         return comp.balanceOf(address(this)) - prev;
     }
 
@@ -158,7 +188,7 @@ contract CropJoin {
         address usr = msg.sender;
         require(comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr])));
         if (wad > 0) {
-            require(gem.transferFrom(address(this), usr, val));
+            require(gem.transfer(usr, val));
             vat.slip(ilk, usr, -int(wad));
 
             total = sub(total, wad);
@@ -170,7 +200,7 @@ contract CropJoin {
     function flee(uint wad) public {
         address usr = msg.sender;
 
-        require(gem.transferFrom(address(this), usr, wad));
+        require(gem.transfer(usr, wad));
         vat.slip(ilk, usr, -int(wad));
 
         total = sub(total, wad);
