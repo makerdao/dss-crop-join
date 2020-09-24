@@ -75,7 +75,7 @@ contract CropTest is DSTest {
 
     function setUp() public virtual {
         self  = address(this);
-        usdc  = new Token(6, 1000 ether);
+        usdc  = new Token(6, 1000 * 1e6);
         cusdc = new Token(8,  0);
         comp  = new Token(18, 0);
         troll = new Troll(address(comp));
@@ -93,8 +93,8 @@ contract CropTest is DSTest {
         a = new Usr(join);
         b = new Usr(join);
 
-        usdc.transfer(address(a), 200 ether);
-        usdc.transfer(address(b), 200 ether);
+        usdc.transfer(address(a), 200 * 1e6);
+        usdc.transfer(address(b), 200 * 1e6);
 
         a.approve(address(usdc), address(join));
         b.approve(address(usdc), address(join));
@@ -103,137 +103,129 @@ contract CropTest is DSTest {
     function test_simple_multi_user() public {
         (Usr a, Usr b) = init_user();
 
-        a.join(60 ether);
-        b.join(40 ether);
+        a.join(60 * 1e6);
+        b.join(40 * 1e6);
 
-        troll.reward(50 ether);
+        troll.reward(50 * 1e18);
 
         a.join(0);
-        assertEq(comp.balanceOf(address(a)), 30 ether);
-        assertEq(comp.balanceOf(address(b)),  0 ether);
+        assertEq(comp.balanceOf(address(a)), 30 * 1e18);
+        assertEq(comp.balanceOf(address(b)),  0 * 1e18);
 
         b.join(0);
-        assertEq(comp.balanceOf(address(a)), 30 ether);
-        assertEq(comp.balanceOf(address(b)), 20 ether);
+        assertEq(comp.balanceOf(address(a)), 30 * 1e18);
+        assertEq(comp.balanceOf(address(b)), 20 * 1e18);
     }
     function test_simple_multi_reap() public {
-        Usr a = new Usr(join);
-        Usr b = new Usr(join);
-        usdc.transfer(address(a), 200 ether);
-        usdc.transfer(address(b), 200 ether);
+        (Usr a, Usr b) = init_user();
 
-        a.join(60 ether);
-        b.join(40 ether);
+        a.join(60 * 1e6);
+        b.join(40 * 1e6);
 
-        troll.reward(50 ether);
+        troll.reward(50 * 1e18);
 
         a.join(0);
-        assertEq(comp.balanceOf(address(a)), 30 ether);
-        assertEq(comp.balanceOf(address(b)),  0 ether);
+        assertEq(comp.balanceOf(address(a)), 30 * 1e18);
+        assertEq(comp.balanceOf(address(b)),  0 * 1e18);
 
         b.join(0);
-        assertEq(comp.balanceOf(address(a)), 30 ether);
-        assertEq(comp.balanceOf(address(b)), 20 ether);
+        assertEq(comp.balanceOf(address(a)), 30 * 1e18);
+        assertEq(comp.balanceOf(address(b)), 20 * 1e18);
 
         a.join(0); b.reap();
-        assertEq(comp.balanceOf(address(a)), 30 ether);
-        assertEq(comp.balanceOf(address(b)), 20 ether);
+        assertEq(comp.balanceOf(address(a)), 30 * 1e18);
+        assertEq(comp.balanceOf(address(b)), 20 * 1e18);
     }
     function test_simple_join_exit() public {
-        join.join(100 ether);
-        assertEq(comp.balanceOf(self), 0 ether, "no initial rewards");
+        join.join(100 * 1e6);
+        assertEq(comp.balanceOf(self), 0 * 1e18, "no initial rewards");
 
-        troll.reward(10 ether);
+        troll.reward(10 * 1e18);
         join.join(0);
-        assertEq(comp.balanceOf(self), 10 ether, "rewards increase with reap");
+        assertEq(comp.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
-        join.join(100 ether);
-        assertEq(comp.balanceOf(self), 10 ether, "rewards invariant over join");
+        join.join(100 * 1e6);
+        assertEq(comp.balanceOf(self), 10 * 1e18, "rewards invariant over join");
 
-        join.exit(200 ether);
-        assertEq(comp.balanceOf(self), 10 ether, "rewards invariant over exit");
+        join.exit(200 * 1e6);
+        assertEq(comp.balanceOf(self), 10 * 1e18, "rewards invariant over exit");
 
-        join.join(50 ether);
+        join.join(50 * 1e6);
 
-        assertEq(comp.balanceOf(self), 10 ether);
-        troll.reward(10 ether);
-        join.join(10 ether);
-        assertEq(comp.balanceOf(self), 20 ether);
+        assertEq(comp.balanceOf(self), 10 * 1e18);
+        troll.reward(10 * 1e18);
+        join.join(10 * 1e6);
+        assertEq(comp.balanceOf(self), 20 * 1e18);
     }
     function test_complex_scenario() public {
-        Usr a = new Usr(join);
-        Usr b = new Usr(join);
-        usdc.transfer(address(a), 200 ether);
-        usdc.transfer(address(b), 200 ether);
+        (Usr a, Usr b) = init_user();
 
-        a.join(60 ether);
-        b.join(40 ether);
+        a.join(60 * 1e6);
+        b.join(40 * 1e6);
 
-        troll.reward(50 ether);
+        troll.reward(50 * 1e18);
 
         a.join(0);
-        assertEq(comp.balanceOf(address(a)), 30 ether);
-        assertEq(comp.balanceOf(address(b)),  0 ether);
+        assertEq(comp.balanceOf(address(a)), 30 * 1e18);
+        assertEq(comp.balanceOf(address(b)),  0 * 1e18);
 
         b.join(0);
-        assertEq(comp.balanceOf(address(a)), 30 ether);
-        assertEq(comp.balanceOf(address(b)), 20 ether);
+        assertEq(comp.balanceOf(address(a)), 30 * 1e18);
+        assertEq(comp.balanceOf(address(b)), 20 * 1e18);
 
         a.join(0); b.reap();
-        assertEq(comp.balanceOf(address(a)), 30 ether);
-        assertEq(comp.balanceOf(address(b)), 20 ether);
+        assertEq(comp.balanceOf(address(a)), 30 * 1e18);
+        assertEq(comp.balanceOf(address(b)), 20 * 1e18);
 
-        troll.reward(50 ether);
-        a.join(20 ether);
+        troll.reward(50 * 1e18);
+        a.join(20 * 1e6);
         a.join(0); b.reap();
-        assertEq(comp.balanceOf(address(a)), 60 ether);
-        assertEq(comp.balanceOf(address(b)), 40 ether);
+        assertEq(comp.balanceOf(address(a)), 60 * 1e18);
+        assertEq(comp.balanceOf(address(b)), 40 * 1e18);
 
-        troll.reward(30 ether);
+        troll.reward(30 * 1e18);
         a.join(0); b.reap();
-        assertEq(comp.balanceOf(address(a)), 80 ether);
-        assertEq(comp.balanceOf(address(b)), 50 ether);
+        assertEq(comp.balanceOf(address(a)), 80 * 1e18);
+        assertEq(comp.balanceOf(address(b)), 50 * 1e18);
 
-        b.exit(20 ether);
+        b.exit(20 * 1e6);
     }
 
     // a user's balance can be altered with vat.flux, check that this
     // can only be disadvantageous
     function test_flux_transfer() public {
-        Usr a = new Usr(join);
-        Usr b = new Usr(join);
-        usdc.transfer(address(a), 200 ether);
+        (Usr a, Usr b) = init_user();
 
-        a.join(100 ether);
-        troll.reward(50 ether);
+        a.join(100 * 1e6);
+        troll.reward(50 * 1e18);
 
         a.join(0);
-        assertEq(comp.balanceOf(address(a)), 50 ether);
-        assertEq(comp.balanceOf(address(b)),  0 ether);
+        assertEq(comp.balanceOf(address(a)), 50 * 1e18);
+        assertEq(comp.balanceOf(address(b)),  0 * 1e18);
 
-        troll.reward(50 ether);
-        vat.flux(ilk, address(a), address(b), 50 ether);
+        troll.reward(50 * 1e18);
+        vat.flux(ilk, address(a), address(b), 50 * 1e18);
         b.join(0);
-        assertEq(comp.balanceOf(address(b)),  0 ether, "if nonzero we have a problem");
+        assertEq(comp.balanceOf(address(b)),  0 * 1e18, "if nonzero we have a problem");
     }
 
     // flee is an emergency exit with no rewards, check that these are
     // not given out
     function test_flee() public {
-        join.join(100 ether);
-        assertEq(comp.balanceOf(self), 0 ether, "no initial rewards");
+        join.join(100 * 1e6);
+        assertEq(comp.balanceOf(self), 0 * 1e18, "no initial rewards");
 
-        troll.reward(10 ether);
+        troll.reward(10 * 1e18);
         join.join(0);
-        assertEq(comp.balanceOf(self), 10 ether, "rewards increase with reap");
+        assertEq(comp.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
-        troll.reward(10 ether);
-        join.exit(50 ether);
-        assertEq(comp.balanceOf(self), 20 ether, "rewards increase with exit");
+        troll.reward(10 * 1e18);
+        join.exit(50 * 1e6);
+        assertEq(comp.balanceOf(self), 20 * 1e18, "rewards increase with exit");
 
-        troll.reward(10 ether);
-        join.flee(50 ether);
-        assertEq(comp.balanceOf(self), 20 ether, "rewards invariant over flee");
+        troll.reward(10 * 1e18);
+        join.flee(50 * 1e6);
+        assertEq(comp.balanceOf(self), 20 * 1e18, "rewards invariant over flee");
     }
 }
 
@@ -266,12 +258,12 @@ contract CompTest is CropTest {
         hevm.store(
             address(usdc),
             keccak256(abi.encode(address(this), uint256(9))),
-            bytes32(uint(1000 ether))
+            bytes32(uint(1000 * 1e6))
         );
     }
 
     function test_setup() public {
-        assertEq(usdc.balanceOf(self), 1000 ether, "hack the usdc");
+        assertEq(usdc.balanceOf(self), 1000 * 1e6, "hack the usdc");
     }
 
     function test_join() public {
