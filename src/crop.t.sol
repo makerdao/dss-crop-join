@@ -59,7 +59,8 @@ contract Troll {
     }
 }
 
-contract CropTest is DSTest {
+
+contract CropTestBase is DSTest {
     function assertEq(int a, int b, bytes32 err) internal {
         if (a != b) {
             emit log_named_bytes32("Fail: ", err);
@@ -82,6 +83,19 @@ contract CropTest is DSTest {
     address  self;
     bytes32  ilk = "usdc-c";
 
+    function init_user() internal returns (Usr a, Usr b) {
+        a = new Usr(join);
+        b = new Usr(join);
+
+        usdc.transfer(address(a), 200 * 1e6);
+        usdc.transfer(address(b), 200 * 1e6);
+
+        a.approve(address(usdc), address(join));
+        b.approve(address(usdc), address(join));
+    }
+}
+
+contract CropTest is CropTestBase {
     function setUp() public virtual {
         self  = address(this);
         usdc  = new Token(6, 1000 * 1e6);
@@ -105,17 +119,6 @@ contract CropTest is DSTest {
     function test_reward() public {
         reward(self, 100 ether);
         assertEq(troll.compAccrued(self), 100 ether);
-    }
-
-    function init_user() internal returns (Usr a, Usr b) {
-        a = new Usr(join);
-        b = new Usr(join);
-
-        usdc.transfer(address(a), 200 * 1e6);
-        usdc.transfer(address(b), 200 * 1e6);
-
-        a.approve(address(usdc), address(join));
-        b.approve(address(usdc), address(join));
     }
 
     function test_simple_multi_user() public {
