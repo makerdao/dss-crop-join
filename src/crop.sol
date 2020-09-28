@@ -154,7 +154,7 @@ contract CropJoin {
         ctokens[0] = address(cgem);
         users  [0] = address(this);
 
-        comptroller.claimComp(users, ctokens, true, false);
+        comptroller.claimComp(users, ctokens, true, true);
         return sub(comp.balanceOf(address(this)), stock);
     }
 
