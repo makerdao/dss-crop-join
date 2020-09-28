@@ -99,6 +99,7 @@ contract CropJoin {
 
     uint256     public share;  // crops per gem
     uint256     public total;  // total gems
+    uint256     public stock;  // crop balance
 
     mapping (address => uint) public crops;   // crops per user
     mapping (address => uint) public balance; // gems per user
@@ -153,9 +154,8 @@ contract CropJoin {
         ctokens[0] = address(cgem);
         users  [0] = address(this);
 
-        uint prev = comp.balanceOf(address(this));
         comptroller.claimComp(users, ctokens, true, false);
-        return comp.balanceOf(address(this)) - prev;
+        return sub(comp.balanceOf(address(this)), stock);
     }
 
     // usdc:  6 decimals
@@ -170,6 +170,7 @@ contract CropJoin {
 
         address usr = msg.sender;
         require(comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr])));
+        stock = comp.balanceOf(address(this));
         if (wad > 0) {
             require(gem.transferFrom(usr, address(this), val));
             vat.slip(ilk, usr, int(wad));
@@ -187,6 +188,7 @@ contract CropJoin {
 
         address usr = msg.sender;
         require(comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr])));
+        stock = comp.balanceOf(address(this));
         if (wad > 0) {
             require(gem.transfer(usr, val));
             vat.slip(ilk, usr, -int(wad));
