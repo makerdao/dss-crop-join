@@ -30,6 +30,10 @@ contract Token {
     }
 }
 
+abstract contract cToken is Token {
+    function underlying() public returns (address a) {}
+}
+
 contract Troll {
     Token comp;
     constructor(address comp_) public {
@@ -54,6 +58,7 @@ contract Troll {
         return err;
     }
     function compBorrowerIndex(address c, address b) public returns (uint) {}
+    function mintAllowed(address ctoken, address minter, uint256 mintAmount) public returns (uint) {}
     function getBlockNumber() public view returns (uint) {
         return block.number;
     }
@@ -318,6 +323,82 @@ contract CompTest is CropTest {
         join.join(100 * 1e6);
     }
 }
+
+// Here we run some tests against the real Compound on mainnet
+contract RealCompTest is CropTestBase {
+    Hevm hevm = Hevm(address(bytes20(uint160(uint256(keccak256('hevm cheat code'))))));
+
+    function setUp() public {
+        self = address(this);
+        vat  = new MockVat();
+
+        usdc  =  Token(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+        cusdc =  Token(0x39AA39c021dfbaE8faC545936693aC917d5E7563);
+        comp  =  Token(0xc00e94Cb662C3520282E6f5717214004A7f26888);
+        troll =  Troll(0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B);
+
+        join = new CropJoin( address(vat)
+                           , ilk
+                           , address(usdc)
+                           , address(cusdc)
+                           , address(comp)
+                           , address(troll)
+                           );
+
+        // give ourselves some usdc
+        hevm.store(
+            address(usdc),
+            keccak256(abi.encode(address(this), uint256(9))),
+            bytes32(uint(1000 * 1e6))
+        );
+
+        hevm.roll(block.number + 10);
+    }
+
+    function test_underlying() public {
+        assertEq(cToken(address(cusdc)).underlying(), address(usdc));
+    }
+
+    function reward() internal {
+        // accrue ~1 day of rewards
+        hevm.warp(block.timestamp + 60 * 60 * 24);
+        // unneeded?
+        hevm.roll(block.number + 5760);
+    }
+
+    function test_reward_unwound() public {
+        (Usr a, Usr b) = init_user();
+        assertEq(comp.balanceOf(address(a)), 0 ether);
+
+        a.join(100 * 1e6);
+        assertEq(comp.balanceOf(address(a)), 0 ether);
+
+        join.wind(0, 0);
+
+        reward();
+
+        a.join(0);
+        // ~ 1.5 COMP per year
+        assert(comp.balanceOf(address(a)) > 0.00003 ether);
+    }
+
+    function test_reward_wound() public {
+        (Usr a, Usr b) = init_user();
+        assertEq(comp.balanceOf(address(a)), 0 ether);
+
+        a.join(100 * 1e6);
+        assertEq(comp.balanceOf(address(a)), 0 ether);
+
+        join.wind(200 * 10**6, 1);
+
+        reward();
+
+        a.join(0);
+        // ???
+        assertTrue(comp.balanceOf(address(a)) > 0.00004 ether);
+    }
+}
+
 
 contract Usr {
     CropJoin j;
