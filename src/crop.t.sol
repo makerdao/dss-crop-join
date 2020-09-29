@@ -389,11 +389,13 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        join.wind(200 * 10**6, 1);
+        join.wind(50 * 10**6, 0);
 
         reward();
 
         a.join(0);
+        // try removing this line:
+        assertEq(comp.balanceOf(address(a)), 10 ether);
         // ???
         assertTrue(comp.balanceOf(address(a)) > 0.00004 ether);
     }
