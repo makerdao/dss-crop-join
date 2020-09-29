@@ -238,9 +238,9 @@ contract CropJoin {
     //   - same / similar process to liquidation (?)
 
     // todo: update cd on each wind / unwind?
-    uint256 public cf = 0.75   ether;  // usdc max collateral factor
-    uint256 public tf = 0.675  ether;  // target collateral factor   (90%)
-    uint256 public mf = 0.6375 ether;  // minimum collateral factor  (85%)
+    uint256 public cf   = 0.75   ether;  // usdc max collateral factor
+    uint256 public maxf = 0.675  ether;  // maximum collateral factor  (90%)
+    uint256 public minf = 0.6375 ether;  // minimum collateral factor  (85%)
 
     // borrow_: how much underlying to borrow (6 decimals)
     // n: how many times to repeat a max borrow loop before the
@@ -259,7 +259,7 @@ contract CropJoin {
         require(cgem.mint(borrow_) == 0);
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
-        require(u < tf);
+        require(u < maxf);
     }
     // repay_: how much underlying to repay (6 decimals)
     // n: how many times to repeat a max repay loop before the
@@ -269,7 +269,7 @@ contract CropJoin {
         require(cgem.mint(gem.balanceOf(address(this))) == 0);
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
-        require(u > tf);
+        require(u > maxf);
 
         uint max_repay;
         for (uint i=0; i < n ; i++) {
@@ -283,6 +283,20 @@ contract CropJoin {
         uint u_ = wdiv(cgem.borrowBalanceStored(address(this)),
                        cgem.balanceOfUnderlying(address(this)));
         require(u_ < u);
-        require(u_ > mf);
+        require(u_ > minf);
+    }
+
+    function pour(uint val) public {
+        require(cgem.accrueInterest() == 0);
+        uint s = cgem.balanceOfUnderlying(address(this));
+        uint b = cgem.borrowBalanceStored(address(this));
+        uint r = wdiv(sub(wmul(s, cf), b), cf);  // ensure rounding down
+        require(cgem.redeemUnderlying(r) == 0);
+        require(cgem.repayBorrow(r) == 0);
+        require(cgem.redeemUnderlying(val) == 0);
+        uint u = wdiv(cgem.borrowBalanceStored(address(this)),
+                      cgem.balanceOfUnderlying(address(this)));
+        require(u < maxf);
+        exit(val);
     }
 }

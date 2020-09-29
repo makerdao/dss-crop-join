@@ -67,6 +67,25 @@ contract Troll {
     }
 }
 
+contract Usr {
+    CropJoin j;
+    constructor(CropJoin join_) public {
+        j = join_;
+    }
+    function approve(address coin, address usr) public {
+        Token(coin).approve(usr, uint(-1));
+    }
+    function join(uint wad) public {
+        j.join(wad);
+    }
+    function exit(uint wad) public {
+        j.exit(wad);
+    }
+    function reap() public {
+        j.join(0);
+    }
+}
+
 
 contract CropTestBase is DSTest {
     function assertTrue(bool b, bytes32 err) internal {
@@ -113,6 +132,40 @@ contract CropTestBase is DSTest {
 
         a.approve(address(usdc), address(join));
         b.approve(address(usdc), address(join));
+    }
+
+    function try_call(address addr, bytes calldata data) external returns (bool) {
+        bytes memory _data = data;
+        assembly {
+            let ok := call(gas(), addr, 0, add(_data, 0x20), mload(_data), 0, 0)
+            let free := mload(0x40)
+            mstore(free, ok)
+            mstore(0x40, add(free, 32))
+            revert(free, 32)
+        }
+    }
+    function make_call(bytes memory data) internal returns (bool) {
+        string memory try_sig = "try_call(address,bytes)";
+        bytes memory can_call = abi.encodeWithSignature(try_sig, join, data);
+        (bool ok, bytes memory success) = address(this).call(can_call);
+
+        ok = abi.decode(success, (bool));
+        if (ok) return true;
+    }
+    function can_exit(uint val) public returns (bool) {
+        return make_call(abi.encodeWithSignature
+                           ("exit(uint256)", val)
+                        );
+    }
+    function can_pour(uint val) public returns (bool) {
+        return make_call(abi.encodeWithSignature
+                           ("pour(uint256)", val)
+                        );
+    }
+    function can_unwind(uint repay, uint n) public returns (bool) {
+        return make_call(abi.encodeWithSignature
+                           ("unwind(uint256,uint256)", repay, n)
+                        );
     }
 }
 
@@ -369,6 +422,8 @@ contract RealCompTest is CropTestBase {
         );
 
         hevm.roll(block.number + 10);
+
+        usdc.approve(address(join), uint(-1));
     }
 
     function get_cf() internal returns (uint256 cf) {
@@ -421,8 +476,8 @@ contract RealCompTest is CropTestBase {
         assertTrue(comp.balanceOf(address(a)) > 0.00009 ether);
         assertTrue(comp.balanceOf(address(a)) < 0.0001 ether);
 
-        assertTrue(get_cf() < join.tf());
-        assertTrue(get_cf() < join.mf());
+        assertTrue(get_cf() < join.maxf());
+        assertTrue(get_cf() < join.minf());
     }
 
     function test_reward_wound_fully() public {
@@ -441,8 +496,8 @@ contract RealCompTest is CropTestBase {
         assertTrue(comp.balanceOf(address(a)) > 0.00029 ether);
         assertTrue(comp.balanceOf(address(a)) < 0.0003 ether);
 
-        assertTrue(get_cf() < join.tf());
-        assertTrue(get_cf() > join.mf());
+        assertTrue(get_cf() < join.maxf());
+        assertTrue(get_cf() > join.minf());
     }
 
     function testFail_over_wind() public {
@@ -467,13 +522,13 @@ contract RealCompTest is CropTestBase {
 
         reward(1 days);
 
-        assertTrue(get_cf() < join.tf(), "under target");
-        assertTrue(get_cf() > join.mf(), "over minimum");
+        assertTrue(get_cf() < join.maxf(), "under target");
+        assertTrue(get_cf() > join.minf(), "over minimum");
 
         assertTrue(!can_unwind(0, 1), "unable to unwind if under target");
-        reward(150 days);
+        reward(300 days);
 
-        assertTrue(get_cf() > join.tf(), "over target after interest");
+        assertTrue(get_cf() > join.maxf(), "over target after interest");
 
         // unwind is used for deleveraging our position. Here we have
         // gone over the target due to accumulated interest, so we
@@ -482,50 +537,35 @@ contract RealCompTest is CropTestBase {
         assertTrue(!can_unwind(0, 2), "unable to unwind below minimum");
         join.unwind(0, 1);
 
-        assertTrue(get_cf() < join.tf(), "under target post unwind");
-        assertTrue(get_cf() > join.mf(), "over minimum post unwind");
+        assertTrue(get_cf() < join.maxf(), "under target post unwind");
+        assertTrue(get_cf() > join.minf(), "over minimum post unwind");
     }
 
-    function try_call(address addr, bytes calldata data) external returns (bool) {
-        bytes memory _data = data;
-        assembly {
-            let ok := call(gas(), addr, 0, add(_data, 0x20), mload(_data), 0, 0)
-            let free := mload(0x40)
-            mstore(free, ok)
-            mstore(0x40, add(free, 32))
-            revert(free, 32)
-        }
-    }
-    function can_unwind(uint repay, uint n) public returns (bool) {
-        string memory sig = "unwind(uint256,uint256)";
-        bytes memory data = abi.encodeWithSignature(sig, repay, n);
+    // wind / unwind make the underlying unavailable as it is deposited
+    // into the ctoken. In order to exit we will have to free up some
+    // underlying.
+    function test_wound_pour_exit() public {
+        join.join(100 * 1e6);
 
-        string memory try_sig = "try_call(address,bytes)";
-        bytes memory can_call = abi.encodeWithSignature(try_sig, join, data);
-        (bool ok, bytes memory success) = address(this).call(can_call);
+        assertEq(comp.balanceOf(self), 0 ether, "no initial rewards");
 
-        ok = abi.decode(success, (bool));
-        if (ok) return true;
-    }
+        join.wind(0, 4);
+        reward(1 days);
 
-}
+        assertTrue(get_cf() < join.maxf(), "cf under target");
+        assertTrue(get_cf() > join.minf(), "cf over minimum");
 
+        log_named_uint("cfpre", get_cf());
 
-contract Usr {
-    CropJoin j;
-    constructor(CropJoin join_) public {
-        j = join_;
-    }
-    function approve(address coin, address usr) public {
-        Token(coin).approve(usr, uint(-1));
-    }
-    function join(uint wad) public {
-        j.join(wad);
-    }
-    function exit(uint wad) public {
-        j.exit(wad);
-    }
-    function reap() public {
-        j.join(0);
+        // we can't exit as there is no available usdc
+        assertTrue(!can_exit(10 * 1e6), "cannot 10% exit initially");
+
+        // however we can pour
+        assertTrue( can_pour(16 * 1e6), "ok exit with 16% pour");
+        assertTrue(!can_pour(17 * 1e6), "no exit with 17% pour");
+
+        uint prev = usdc.balanceOf(address(this));
+        join.pour(10 * 1e6);
+        assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
     }
 }
