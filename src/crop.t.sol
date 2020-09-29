@@ -32,6 +32,9 @@ contract Token {
 
 abstract contract cToken is Token {
     function underlying() public returns (address a) {}
+    function balanceOfUnderlying(address owner) external returns (uint) {}
+    function borrowBalanceStored(address account) external view returns (uint) {}
+    function accrueInterest() external returns (uint) {}
 }
 
 contract Troll {
@@ -77,6 +80,13 @@ contract CropTestBase is DSTest {
             emit log_named_bytes32("Fail: ", err);
             assertEq(a, b);
         }
+    }
+    function mul(uint x, uint y) public pure returns (uint z) {
+        require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
+    }
+    uint256 constant WAD  = 10 ** 18;
+    function wdiv(uint x, uint y) public pure returns (uint z) {
+        z = mul(x, WAD) / y;
     }
 
     Token    usdc;
@@ -355,15 +365,21 @@ contract RealCompTest is CropTestBase {
         hevm.roll(block.number + 10);
     }
 
+    function get_cf() internal returns (uint256 cf) {
+        require(cToken(address(cusdc)).accrueInterest() == 0);
+        cf = wdiv(cToken(address(cusdc)).borrowBalanceStored(address(join)),
+                  cToken(address(cusdc)).balanceOfUnderlying(address(join)));
+    }
+
     function test_underlying() public {
         assertEq(cToken(address(cusdc)).underlying(), address(usdc));
     }
 
-    function reward() internal {
+    function reward(uint256 tic) internal {
         // accrue ~1 day of rewards
-        hevm.warp(block.timestamp + 60 * 60 * 24);
+        hevm.warp(block.timestamp + tic);
         // unneeded?
-        hevm.roll(block.number + 5760);
+        hevm.roll(block.number + tic / 15);
     }
 
     function test_reward_unwound() public {
@@ -375,11 +391,12 @@ contract RealCompTest is CropTestBase {
 
         join.wind(0, 0);
 
-        reward();
+        reward(1 days);
 
         a.join(0);
-        // ~ 1.5 COMP per year
-        assert(comp.balanceOf(address(a)) > 0.00003 ether);
+        // ~ 0.012 COMP per year
+        assertTrue(comp.balanceOf(address(a)) > 0.00003 ether);
+        assertTrue(comp.balanceOf(address(a)) < 0.00004 ether);
     }
 
     function test_reward_wound() public {
@@ -391,14 +408,72 @@ contract RealCompTest is CropTestBase {
 
         join.wind(50 * 10**6, 0);
 
-        reward();
+        reward(1 days);
 
         a.join(0);
-        // try removing this line:
-        assertEq(comp.balanceOf(address(a)), 10 ether);
-        // ???
-        assertTrue(comp.balanceOf(address(a)) > 0.00004 ether);
+        // ~ 0.035 COMP per year
+        assertTrue(comp.balanceOf(address(a)) > 0.00009 ether);
+        assertTrue(comp.balanceOf(address(a)) < 0.0001 ether);
+
+        assertTrue(get_cf() < join.tf());
+        assertTrue(get_cf() < join.mf());
     }
+
+    function test_reward_wound_fully() public {
+        (Usr a, Usr b) = init_user();
+        assertEq(comp.balanceOf(address(a)), 0 ether);
+
+        a.join(100 * 1e6);
+        assertEq(comp.balanceOf(address(a)), 0 ether);
+
+        join.wind(0, 4);
+
+        reward(1 days);
+
+        a.join(0);
+        // ~ 0.11 COMP per year
+        assertTrue(comp.balanceOf(address(a)) > 0.00029 ether);
+        assertTrue(comp.balanceOf(address(a)) < 0.0003 ether);
+
+        assertTrue(get_cf() < join.tf());
+        assertTrue(get_cf() > join.mf());
+    }
+
+    function testFail_over_wind() public {
+        (Usr a, Usr b) = init_user();
+        assertEq(comp.balanceOf(address(a)), 0 ether);
+
+        a.join(100 * 1e6);
+        assertEq(comp.balanceOf(address(a)), 0 ether);
+
+        join.wind(0, 5);
+    }
+
+    function test_wind_unwind() public {
+        (Usr a, Usr b) = init_user();
+        assertEq(comp.balanceOf(address(a)), 0 ether);
+
+        a.join(100 * 1e6);
+        assertEq(comp.balanceOf(address(a)), 0 ether);
+
+        join.wind(0, 4);
+
+        reward(1 days);
+
+        assertTrue(get_cf() < join.tf());
+        assertTrue(get_cf() > join.mf());
+
+        reward(150 days);
+
+        assertTrue(get_cf() > join.tf());
+
+        join.unwind(0, 1);
+
+        assertTrue(get_cf() < join.tf());
+        // assertEq(cToken(address(cusdc)).balanceOfUnderlying(address(join)), 300 * 10**6);
+        // assertEq(cToken(address(cusdc)).borrowBalanceStored(address(join)), 200 * 10**6);
+    }
+
 }
 
 
