@@ -256,7 +256,7 @@ contract CropJoin {
         }
         require(cgem.borrow(borrow_) == 0);
         require(cgem.mint(borrow_) == 0);
-        uint u = ddiv(cgem.borrowBalanceStored(address(this)),
+        uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
         require(u < tf);
     }
@@ -266,7 +266,7 @@ contract CropJoin {
     function unwind(uint repay_, uint n) public {
         require(cgem.accrueInterest() == 0);
         require(cgem.mint(gem.balanceOf(address(this))) == 0);
-        uint u = ddiv(cgem.borrowBalanceStored(address(this)),
+        uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
         require(u > tf);
 
@@ -279,7 +279,7 @@ contract CropJoin {
         }
         require(cgem.redeemUnderlying(repay_) == 0);
         require(cgem.repayBorrow(repay_) == 0);
-        uint u_ = ddiv(cgem.borrowBalanceStored(address(this)),
+        uint u_ = wdiv(cgem.borrowBalanceStored(address(this)),
                        cgem.balanceOfUnderlying(address(this)));
         require(u_ < u);
     }
