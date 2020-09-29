@@ -69,6 +69,12 @@ contract Troll {
 
 
 contract CropTestBase is DSTest {
+    function assertTrue(bool b, bytes32 err) internal {
+        if (!b) {
+            emit log_named_bytes32("Fail: ", err);
+            assertTrue(b);
+        }
+    }
     function assertEq(int a, int b, bytes32 err) internal {
         if (a != b) {
             emit log_named_bytes32("Fail: ", err);
@@ -450,6 +456,7 @@ contract RealCompTest is CropTestBase {
     }
 
     function test_wind_unwind() public {
+        require(cToken(address(cusdc)).accrueInterest() == 0);
         (Usr a, Usr b) = init_user();
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
@@ -460,18 +467,45 @@ contract RealCompTest is CropTestBase {
 
         reward(1 days);
 
-        assertTrue(get_cf() < join.tf());
-        assertTrue(get_cf() > join.mf());
+        assertTrue(get_cf() < join.tf(), "under target");
+        assertTrue(get_cf() > join.mf(), "over minimum");
 
+        assertTrue(!can_unwind(0, 1), "unable to unwind if under target");
         reward(150 days);
 
-        assertTrue(get_cf() > join.tf());
+        assertTrue(get_cf() > join.tf(), "over target after interest");
 
+        // unwind is used for deleveraging our position. Here we have
+        // gone over the target due to accumulated interest, so we
+        // unwind to bring us back under the target leverage.
+        assertTrue( can_unwind(0, 1), "able to unwind if over target");
+        assertTrue(!can_unwind(0, 2), "unable to unwind below minimum");
         join.unwind(0, 1);
 
-        assertTrue(get_cf() < join.tf());
-        // assertEq(cToken(address(cusdc)).balanceOfUnderlying(address(join)), 300 * 10**6);
-        // assertEq(cToken(address(cusdc)).borrowBalanceStored(address(join)), 200 * 10**6);
+        assertTrue(get_cf() < join.tf(), "under target post unwind");
+        assertTrue(get_cf() > join.mf(), "over minimum post unwind");
+    }
+
+    function try_call(address addr, bytes calldata data) external returns (bool) {
+        bytes memory _data = data;
+        assembly {
+            let ok := call(gas(), addr, 0, add(_data, 0x20), mload(_data), 0, 0)
+            let free := mload(0x40)
+            mstore(free, ok)
+            mstore(0x40, add(free, 32))
+            revert(free, 32)
+        }
+    }
+    function can_unwind(uint repay, uint n) public returns (bool) {
+        string memory sig = "unwind(uint256,uint256)";
+        bytes memory data = abi.encodeWithSignature(sig, repay, n);
+
+        string memory try_sig = "try_call(address,bytes)";
+        bytes memory can_call = abi.encodeWithSignature(try_sig, join, data);
+        (bool ok, bytes memory success) = address(this).call(can_call);
+
+        ok = abi.decode(success, (bool));
+        if (ok) return true;
     }
 
 }

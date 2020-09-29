@@ -238,8 +238,9 @@ contract CropJoin {
     //   - same / similar process to liquidation (?)
 
     // todo: update cd on each wind / unwind?
-    uint256 public cf = 0.75  ether;  // usdc max collateral factor
-    uint256 public tf = 0.675 ether;  // target collateral factor
+    uint256 public cf = 0.75   ether;  // usdc max collateral factor
+    uint256 public tf = 0.675  ether;  // target collateral factor   (90%)
+    uint256 public mf = 0.6375 ether;  // minimum collateral factor  (85%)
 
     // borrow_: how much underlying to borrow (6 decimals)
     // n: how many times to repeat a max borrow loop before the
@@ -282,5 +283,6 @@ contract CropJoin {
         uint u_ = wdiv(cgem.borrowBalanceStored(address(this)),
                        cgem.balanceOfUnderlying(address(this)));
         require(u_ < u);
+        require(u_ > mf);
     }
 }
