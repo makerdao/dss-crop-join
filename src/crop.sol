@@ -112,7 +112,6 @@ contract CropJoin {
         gem = ERC20(gem_);
         dec = gem.decimals();
         require(dec <= 18);
-        require(10 ** dec == BASE);
 
         cgem = CToken(cgem_);
         comp = ERC20(comp_);
@@ -137,15 +136,11 @@ contract CropJoin {
         require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
     }
     uint256 constant WAD  = 10 ** 18;
-    uint256 constant BASE = 10 ** 6;
     function wmul(uint x, uint y) public pure returns (uint z) {
         z = mul(x, y) / WAD;
     }
     function wdiv(uint x, uint y) public pure returns (uint z) {
         z = mul(x, WAD) / y;
-    }
-    function ddiv(uint x, uint y) public pure returns (uint z) {
-        z = mul(x, BASE) / y;
     }
 
     function crop() internal virtual returns (uint) {
@@ -158,10 +153,7 @@ contract CropJoin {
         return sub(comp.balanceOf(address(this)), stock);
     }
 
-    // usdc:  6 decimals
-    // cusdc: 8 decimals
-    // comp: 18 decimals
-    // gem:  18 decimals
+    // decimals: underlying=dec cToken=8 comp=18 gem=18
     function join(uint256 val) public {
         uint wad = mul(val, 10 ** (18 - dec));
         require(int(wad) >= 0);
@@ -242,7 +234,7 @@ contract CropJoin {
     uint256 public maxf = 0.675  ether;  // maximum collateral factor  (90%)
     uint256 public minf = 0.6375 ether;  // minimum collateral factor  (85%)
 
-    // borrow_: how much underlying to borrow (6 decimals)
+    // borrow_: how much underlying to borrow (dec decimals)
     // n: how many times to repeat a max borrow loop before the
     //    specified borrow/mint
     function wind(uint borrow_, uint n) public {
@@ -261,7 +253,7 @@ contract CropJoin {
                       cgem.balanceOfUnderlying(address(this)));
         require(u < maxf);
     }
-    // repay_: how much underlying to repay (6 decimals)
+    // repay_:  how much underlying to repay (dec decimals)
     // n: how many times to repeat a max repay loop before the
     //    specified redeem/repay
     function unwind(uint repay_, uint n) public {
