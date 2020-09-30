@@ -143,6 +143,16 @@ contract CropJoin {
         z = mul(x, WAD) / y;
     }
 
+    function nps() public returns (uint) {
+        if (total == 0) return WAD;
+        else {
+            uint nav = add(gem.balanceOf(address(this)),
+                           sub(cgem.balanceOfUnderlying(address(this)),
+                               cgem.borrowBalanceStored(address(this))));
+            return wdiv(mul(nav, 10 ** (18 - dec)), total);
+        }
+    }
+
     function crop() internal virtual returns (uint) {
         address[] memory ctokens = new address[](1);
         address[] memory users   = new address[](1);
@@ -155,7 +165,7 @@ contract CropJoin {
 
     // decimals: underlying=dec cToken=8 comp=18 gem=18
     function join(uint256 val) public {
-        uint wad = mul(val, 10 ** (18 - dec));
+        uint wad = wdiv(mul(val, 10 ** (18 - dec)), nps());
         require(int(wad) >= 0);
 
         if (total > 0) share = add(share, wdiv(crop(), total));
@@ -166,6 +176,7 @@ contract CropJoin {
         if (wad > 0) {
             require(gem.transferFrom(usr, address(this), val));
             vat.slip(ilk, usr, int(wad));
+
             total = add(total, wad);
             balance[usr] = add(balance[usr], wad);
         }
@@ -173,8 +184,8 @@ contract CropJoin {
     }
 
     function exit(uint val) public {
-        uint wad = mul(val, 10 ** (18 - dec));
-        require(wad <= 2 ** 255);
+        uint wad = wdiv(mul(val, 10 ** (18 - dec)), nps());
+        require(int(wad) >= 0);
 
         if (total > 0) share = add(share, wdiv(crop(), total));
 
@@ -191,10 +202,13 @@ contract CropJoin {
         crops[usr] = wmul(balance[usr], share);
     }
 
-    function flee(uint wad) public {
+    function flee(uint val) public {
+        uint wad = wdiv(mul(val, 10 ** (18 - dec)), nps());
+        require(int(wad) >= 0);
+
         address usr = msg.sender;
 
-        require(gem.transfer(usr, wad));
+        require(gem.transfer(usr, val));
         vat.slip(ilk, usr, -int(wad));
 
         total = sub(total, wad);
