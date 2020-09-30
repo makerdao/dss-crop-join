@@ -106,6 +106,35 @@ contract CropTestBase is DSTest {
             assertEq(a, b);
         }
     }
+    function assertGt(uint a, uint b, bytes32 err) internal {
+        if (a <= b) {
+            emit log_named_bytes32("Fail: ", err);
+            assertGt(a, b);
+        }
+    }
+    function assertGt(uint a, uint b) internal {
+        if (a <= b) {
+            emit log_bytes32("Error: a > b not satisfied");
+            emit log_named_uint("         a", a);
+            emit log_named_uint("         b", b);
+            fail();
+        }
+    }
+    function assertLt(uint a, uint b, bytes32 err) internal {
+        if (a >= b) {
+            emit log_named_bytes32("Fail: ", err);
+            assertLt(a, b);
+        }
+    }
+    function assertLt(uint a, uint b) internal {
+        if (a >= b) {
+            emit log_bytes32("Error: a < b not satisfied");
+            emit log_named_uint("         a", a);
+            emit log_named_uint("         b", b);
+            fail();
+        }
+    }
+
     function mul(uint x, uint y) public pure returns (uint z) {
         require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
     }
@@ -493,11 +522,11 @@ contract RealCompTest is CropTestBase {
 
         a.join(0);
         // ~ 0.11 COMP per year
-        assertTrue(comp.balanceOf(address(a)) > 0.00029 ether);
-        assertTrue(comp.balanceOf(address(a)) < 0.0003 ether);
+        assertGt(comp.balanceOf(address(a)), 0.00029 ether);
+        assertLt(comp.balanceOf(address(a)), 0.00032 ether);
 
-        assertTrue(get_cf() < join.maxf());
-        assertTrue(get_cf() > join.minf());
+        assertLt(get_cf(), join.maxf(), "cf < maxf");
+        assertGt(get_cf(), join.minf(), "cf > minf");
     }
 
     function testFail_over_wind() public {
@@ -522,8 +551,8 @@ contract RealCompTest is CropTestBase {
 
         reward(1 days);
 
-        assertTrue(get_cf() < join.maxf(), "under target");
-        assertTrue(get_cf() > join.minf(), "over minimum");
+        assertLt(get_cf(), join.maxf(), "under target");
+        assertGt(get_cf(), join.minf(), "over minimum");
 
         assertTrue(!can_unwind(0, 1), "unable to unwind if under target");
         reward(300 days);
@@ -537,8 +566,8 @@ contract RealCompTest is CropTestBase {
         assertTrue(!can_unwind(0, 2), "unable to unwind below minimum");
         join.unwind(0, 1);
 
-        assertTrue(get_cf() < join.maxf(), "under target post unwind");
-        assertTrue(get_cf() > join.minf(), "over minimum post unwind");
+        assertLt(get_cf(), join.maxf(), "under target post unwind");
+        assertGt(get_cf(), join.minf(), "over minimum post unwind");
     }
 
     // wind / unwind make the underlying unavailable as it is deposited
