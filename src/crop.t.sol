@@ -191,6 +191,11 @@ contract CropTestBase is DSTest {
                            ("pour(uint256)", val)
                         );
     }
+    function can_pour(uint val, uint loan) public returns (bool) {
+        return make_call(abi.encodeWithSignature
+                           ("pour(uint256,uint256)", val, loan)
+                        );
+    }
     function can_unwind(uint repay, uint n) public returns (bool) {
         return make_call(abi.encodeWithSignature
                            ("unwind(uint256,uint256)", repay, n)
@@ -573,7 +578,7 @@ contract RealCompTest is CropTestBase {
     // wind / unwind make the underlying unavailable as it is deposited
     // into the ctoken. In order to exit we will have to free up some
     // underlying.
-    function test_wound_pour_exit() public {
+    function wound_pour_exit(bool loan) public {
         join.join(100 * 1e6);
 
         assertEq(comp.balanceOf(self), 0 ether, "no initial rewards");
@@ -593,8 +598,21 @@ contract RealCompTest is CropTestBase {
         assertTrue( can_pour(16 * 1e6), "ok exit with 16% pour");
         assertTrue(!can_pour(17 * 1e6), "no exit with 17% pour");
 
-        uint prev = usdc.balanceOf(address(this));
-        join.pour(10 * 1e6);
-        assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
+        if (loan) {
+            // with a loan we can pour even more (L * (1 - maxf) / maxf) ~ 0.48L
+            assertTrue( can_pour(21 * 1e6, 10 * 1e6), "ok loan pour");
+            assertTrue(!can_pour(22 * 1e6, 10 * 1e6), "no loan pour");
+
+        } else {
+            uint prev = usdc.balanceOf(address(this));
+            join.pour(10 * 1e6);
+            assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
+        }
+    }
+    function test_wound_pour_exit() public {
+        wound_pour_exit(false);
+    }
+    function test_wound_pour_exit_with_loan() public {
+        wound_pour_exit(true);
     }
 }

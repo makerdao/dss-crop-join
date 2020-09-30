@@ -286,17 +286,26 @@ contract CropJoin {
         require(u_ > minf);
     }
 
-    function pour(uint val) public {
+    function pour(uint val, uint loan) public {
         require(cgem.accrueInterest() == 0);
+
+        require(gem.transferFrom(msg.sender, address(this), loan));
+        require(cgem.mint(loan) == 0);
+
         uint s = cgem.balanceOfUnderlying(address(this));
         uint b = cgem.borrowBalanceStored(address(this));
         uint r = wdiv(sub(wmul(s, cf), b), cf);  // ensure rounding down
         require(cgem.redeemUnderlying(r) == 0);
         require(cgem.repayBorrow(r) == 0);
-        require(cgem.redeemUnderlying(val) == 0);
+        require(cgem.redeemUnderlying(add(val, loan)) == 0);
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
         require(u < maxf);
         exit(val);
+
+        require(gem.transfer(msg.sender, loan));
+    }
+    function pour(uint val) public {
+        pour(val, 0);
     }
 }
