@@ -1,4 +1,5 @@
 pragma solidity ^0.6.7;
+pragma experimental ABIEncoderV2;
 
 interface ERC20 {
     function balanceOf(address owner) external view returns (uint);
@@ -52,38 +53,25 @@ interface Comptroller {
     function compAccrued(address) external returns (uint);
     function compBorrowerIndex(address,address) external returns (uint);
     function compSupplierIndex(address,address) external returns (uint);
+    function seizeAllowed(
+        address cTokenCollateral,
+        address cTokenBorrowed,
+        address liquidator,
+        address borrower,
+        uint seizeTokens) external returns (uint);
+    function getAccountLiquidity(address) external returns (uint,uint,uint);
+}
+
+struct Urn {
+    uint256 ink;   // Locked Collateral  [wad]
+    uint256 art;   // Normalised Debt    [wad]
 }
 
 interface VatLike {
     function slip(bytes32 ilk, address usr, int256 wad) external;
     function flux(bytes32 ilk, address src, address dst, uint256 wad) external;
-}
-
-contract MockVat is VatLike {
-    struct Urn {
-        uint256 ink;   // Locked Collateral  [wad]
-        uint256 art;   // Normalised Debt    [wad]
-    }
-    mapping (bytes32 => mapping (address => Urn )) public urns;
-    mapping (bytes32 => mapping (address => uint)) public gem;
-    function add(uint x, int y) internal pure returns (uint z) {
-        z = x + uint(y);
-        require(y >= 0 || z <= x);
-        require(y <= 0 || z >= x);
-    }
-    function add(uint x, uint y) internal pure returns (uint z) {
-        require((z = x + y) >= x);
-    }
-    function sub(uint x, uint y) internal pure returns (uint z) {
-        require((z = x - y) <= x);
-    }
-    function slip(bytes32 ilk, address usr, int256 wad) external override {
-        gem[ilk][usr] = add(gem[ilk][usr], wad);
-    }
-    function flux(bytes32 ilk, address src, address dst, uint256 wad) external override {
-        gem[ilk][src] = sub(gem[ilk][src], wad);
-        gem[ilk][dst] = add(gem[ilk][dst], wad);
-    }
+    function  gem(bytes32 ilk, address usr) external returns (uint);
+    function urns(bytes32 ilk, address usr) external returns (Urn memory);
 }
 
 // receives tokens and shares them among holders
@@ -148,7 +136,7 @@ contract CropJoin {
         else {
             uint nav = add(gem.balanceOf(address(this)),
                            sub(cgem.balanceOfUnderlying(address(this)),
-                               cgem.borrowBalanceStored(address(this))));
+                               cgem.borrowBalanceCurrent(address(this))));
             return wdiv(mul(nav, 10 ** (18 - dec)), total);
         }
     }
@@ -202,11 +190,11 @@ contract CropJoin {
         crops[usr] = wmul(balance[usr], share);
     }
 
-    function flee(uint val) public {
-        uint wad = wdiv(mul(val, 10 ** (18 - dec)), nps());
-        require(int(wad) >= 0);
-
+    function flee() public {
         address usr = msg.sender;
+
+        uint wad = vat.gem(ilk, usr);
+        uint val = wmul(wmul(wad, nps()), 10 ** dec);
 
         require(gem.transfer(usr, val));
         vat.slip(ilk, usr, -int(wad));
@@ -216,34 +204,24 @@ contract CropJoin {
         crops[usr] = wmul(balance[usr], share);
     }
 
-    // todo: tests, simple mock
-    // todo: tests, mainnet fork
-    // todo: flash loan alternative to wind - check gas of wind
+    function tack(address src, address dst, uint wad) public {
+        // collect and pay out any pending rewards
+        if (total > 0) share = add(share, wdiv(crop(), total));
+        require(comp.transfer(src, sub(wmul(balance[src], share), crops[src])));
+        require(comp.transfer(dst, sub(wmul(balance[dst], share), crops[dst])));
+        stock = comp.balanceOf(address(this));
 
-    // todo: compound liquidations
-    // liquidation:
-    //   - cTokens are seized from our supply
-    //   - balanceOfUnderlying decreases.
-    //   - borrowBalance also decreases,
-    //   - now under 100% utilization
-    //   - less underlying than before => usdc amount down
-    //   - user balances / total must be scaled down
-    //   - oracle must report lower price
+        balance[src] = sub(balance[src], wad);
+        balance[dst] = add(balance[dst], wad);
 
-    // todo: doesn't interest accumulation reduce the value of the gem?
-    // todo: demonstrate with a test
-    // interest:
-    //   - supply / borrow nets interest rate
-    //   - comp income offsets interest
-    //   - comp goes direct to users
-    //   - total usdc in adapter must be decreasing over time
-    //   - have to constantly adjust balances / total downwards
-    //     - balance[usr]      <-- scaling factor
-    //     - total             <-- scaling factor
-    //     - vat.gem, vat.ink  <-- spot adjustment
-    //   - same / similar process to liquidation (?)
+        require(balance[src] >= add(vat.gem(ilk, src), vat.urns(ilk, src).ink));
+        require(balance[dst] <= add(vat.gem(ilk, dst), vat.urns(ilk, dst).ink));
 
-    // todo: update cd on each wind / unwind?
+        crops[src] = wmul(balance[src], share);
+        crops[dst] = wmul(balance[dst], share);
+    }
+
+
     uint256 public cf   = 0.75   ether;  // usdc max collateral factor
     uint256 public maxf = 0.675  ether;  // maximum collateral factor  (90%)
     uint256 public minf = 0.6375 ether;  // minimum collateral factor  (85%)
