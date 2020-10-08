@@ -947,19 +947,31 @@ contract RealCompTest is CropTestBase {
         log_named_uint("usdc ", usdc.balanceOf(address(this)));
         log_named_uint("cusdc", cusdc.balanceOf(address(this)));
         logs("liquidate===");
-
+        return;
         // liquidation is not possible for cusdc-cusdc pairs, as it is
-        // blocked by a re-entrancy guard
-        uint repay = 1e6;  // units of underlying
+        // blocked by a re-entrancy guard????
+        uint repay = 20;  // units of underlying
         assertTrue(!can_call( address(cusdc)
                             , abi.encodeWithSignature(
                                 "liquidateBorrow(address,uint256,address)",
-                                address(join), repay, CToken(address(cusdc)))));
+                                address(join), repay, CToken(address(cusdc)))),
+                  "can't perform liquidation");
+        cusdc.liquidateBorrow(address(join), repay, CToken(address(cusdc)));
+
+        supp = CToken(address(cusdc)).balanceOfUnderlying(address(join));
+        borr = CToken(address(cusdc)).borrowBalanceStored(address(join));
+        (, liquidity, shortfall) =
+            troll.getAccountLiquidity(address(join));
+        log_named_uint("cf' ", get_cf());
+        log_named_uint("s' ", supp);
+        log_named_uint("b' ", borr);
+        log_named_uint("liquidity", liquidity);
+        log_named_uint("shortfall", shortfall);
 
         // check how long it would take for us to get to 100% utilisation
         reward(30 * 365 days);
         log_named_uint("cf' ", get_cf());
-        assertGt(get_cf(), 1e18);
+        assertGt(get_cf(), 1e18, "cf > 1");
     }
 
     // allow the test contract to seize collateral from a borrower
