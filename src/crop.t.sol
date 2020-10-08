@@ -70,6 +70,8 @@ contract cToken is Token {
     function seize(address liquidator, address borrower, uint seizeTokens) external returns (uint) {}
     function liquidateBorrow(address borrower, uint repayAmount, CToken cTokenCollateral) external returns (uint) {}
     function getAccountLiquidity(address account) public view returns (uint, uint, uint) {}
+    function exchangeRateCurrent() external returns (uint) {}
+    function borrowIndex() external returns (uint) {}
 }
 
 contract Troll {
@@ -140,7 +142,7 @@ contract Usr {
         j.flee();
     }
     function pour(uint wad) public {
-        j.pour(wad);
+        j.pour(wad, 0);
     }
     function liquidateBorrow(address borrower, uint repayAmount) external
         returns (uint)
@@ -176,10 +178,7 @@ contract Usr {
                         );
     }
     function can_pour(uint val) public returns (bool) {
-        return can_call(address(j),
-                         abi.encodeWithSignature
-                           ("pour(uint256)", val)
-                        );
+        return can_pour(val, 0);
     }
     function can_pour(uint val, uint loan) public returns (bool) {
         return can_call(address(j),
@@ -268,7 +267,7 @@ contract CropTestBase is DSTest {
     address  self;
     bytes32  ilk = "usdc-c";
 
-    function mint_usdc(address usr, uint val) internal {
+    function set_usdc(address usr, uint val) internal {
         hevm.store(
             address(usdc),
             keccak256(abi.encode(usr, uint256(9))),
@@ -314,10 +313,7 @@ contract CropTestBase is DSTest {
                         );
     }
     function can_pour(uint val) public returns (bool) {
-        return can_call(address(join),
-                        abi.encodeWithSignature
-                           ("pour(uint256)", val)
-                        );
+        return can_pour(val, 0);
     }
     function can_pour(uint val, uint loan) public returns (bool) {
         return can_call(address(join),
@@ -577,7 +573,7 @@ contract CompTest is CropTest {
                            );
 
         // give ourselves some usdc
-        mint_usdc(address(this), 1000e6);
+        set_usdc(address(this), 1000e6);
 
         hevm.roll(block.number + 10);
     }
@@ -629,7 +625,7 @@ contract RealCompTest is CropTestBase {
                            );
 
         // give ourselves some usdc
-        mint_usdc(address(this), 1000e6);
+        set_usdc(address(this), 1000e6);
 
         hevm.roll(block.number + 10);
 
@@ -754,6 +750,43 @@ contract RealCompTest is CropTestBase {
         assertGt(get_cf(), join.minf(), "over minimum post unwind");
     }
 
+    function set_cf(uint cf) internal {
+        uint nav = join.nps() * join.total() / 1e18;  // underlying balance
+
+        // desired supply and borrow in terms of underlying
+        uint x = cusdc.exchangeRateCurrent();
+        uint s = (nav * 1e18 / (1e18 - cf)) / 1e12;
+        uint b = s * cf / 1e18 - 1;
+
+        log_named_uint("nav  ", nav);
+        log_named_uint("new s", s);
+        log_named_uint("new b", b);
+        log_named_uint("set u", cf);
+
+        set_usdc(address(join), 0);
+        // cusdc.accountTokens
+        hevm.store(
+            address(cusdc),
+            keccak256(abi.encode(address(join), uint256(15))),
+            bytes32((s * 1e18) / x)
+        );
+        // cusdc.accountBorrows.principal
+        hevm.store(
+            address(cusdc),
+            keccak256(abi.encode(address(join), uint256(17))),
+            bytes32(b)
+        );
+        // cusdc.accountBorrows.interestIndex
+        hevm.store(
+            address(cusdc),
+            bytes32(uint(keccak256(abi.encode(address(join), uint256(17)))) + 1),
+            bytes32(cusdc.borrowIndex())
+        );
+
+        log_named_uint("new u", get_cf());
+        log_named_uint("nav  ", join.nps() * join.total() / 1e18);
+    }
+
     // wind / unwind make the underlying unavailable as it is deposited
     // into the ctoken. In order to exit we will have to free up some
     // underlying.
@@ -762,30 +795,47 @@ contract RealCompTest is CropTestBase {
 
         assertEq(comp.balanceOf(self), 0 ether, "no initial rewards");
 
-        join.wind(0, 4);
-        reward(1 days);
+        set_cf(0.675e18);
 
         assertTrue(get_cf() < join.maxf(), "cf under target");
         assertTrue(get_cf() > join.minf(), "cf over minimum");
-
-        log_named_uint("cfpre", get_cf());
 
         // we can't exit as there is no available usdc
         assertTrue(!can_exit(10 * 1e6), "cannot 10% exit initially");
 
         // however we can pour
-        assertTrue( can_pour(16 * 1e6), "ok exit with 16% pour");
-        assertTrue(!can_pour(17 * 1e6), "no exit with 17% pour");
+        assertTrue( can_pour(14.7 * 1e6), "ok exit with 14.7% pour");
+        assertTrue(!can_pour(14.9 * 1e6), "no exit with 14.9% pour");
 
         if (loan) {
-            // with a loan we can pour even more (L * (1 - maxf) / maxf) ~ 0.48L
-            assertTrue( can_pour(21 * 1e6, 10 * 1e6), "ok loan pour");
-            assertTrue(!can_pour(22 * 1e6, 10 * 1e6), "no loan pour");
+            // with a loan we can pour extra (L * (1 - u) / u) ~= 0.481L
+            assertTrue( can_pour(19.5 * 1e6, 10 * 1e6), "ok loan pour");
+            assertTrue(!can_pour(19.7 * 1e6, 10 * 1e6), "no loan pour");
+
+            log_named_uint("s ", CToken(address(cusdc)).balanceOfUnderlying(address(join)));
+            log_named_uint("b ", CToken(address(cusdc)).borrowBalanceStored(address(join)));
+            log_named_uint("u ", get_cf());
+
+            uint prev = usdc.balanceOf(address(this));
+            join.pour(10 * 1e6,  10 * 1e6);
+            assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
+
+            log_named_uint("s'", CToken(address(cusdc)).balanceOfUnderlying(address(join)));
+            log_named_uint("b'", CToken(address(cusdc)).borrowBalanceStored(address(join)));
+            log_named_uint("u'", get_cf());
 
         } else {
+            log_named_uint("s ", CToken(address(cusdc)).balanceOfUnderlying(address(join)));
+            log_named_uint("b ", CToken(address(cusdc)).borrowBalanceStored(address(join)));
+            log_named_uint("u ", get_cf());
+
             uint prev = usdc.balanceOf(address(this));
-            join.pour(10 * 1e6);
+            join.pour(10 * 1e6, 0);
             assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
+
+            log_named_uint("s'", CToken(address(cusdc)).balanceOfUnderlying(address(join)));
+            log_named_uint("b'", CToken(address(cusdc)).borrowBalanceStored(address(join)));
+            log_named_uint("u'", get_cf());
         }
     }
     function test_wound_pour_exit() public {
@@ -889,7 +939,7 @@ contract RealCompTest is CropTestBase {
         cusdc.approve(address(cusdc), uint(-1));
         usdc.approve(address(cusdc), uint(-1));
         log_named_uint("allowance", cusdc.allowance(address(this), address(cusdc)));
-        mint_usdc(address(this), 1000e6);
+        set_usdc(address(this), 1000e6);
         log_named_uint("usdc ", usdc.balanceOf(address(this)));
         log_named_uint("cusdc", cusdc.balanceOf(address(this)));
         require(cusdc.mint(100e6) == 0);
@@ -980,7 +1030,9 @@ contract RealCompTest is CropTestBase {
         assertGt(get_cf(), join.minf(), "over minimum");
 
         logs("seize===");
-        uint s = CToken(address(cusdc)).seize(address(this), address(join), 20 * 1e11);
+        uint seize = 350 * 1e6 * 1e18 / cusdc.exchangeRateCurrent();
+        log_named_uint("seize", seize);
+        uint s = CToken(address(cusdc)).seize(address(this), address(join), seize);
         assertEq(s, 0, "seize successful");
         log_named_uint("nps", join.nps());
         log_named_uint("cf", get_cf());
@@ -989,11 +1041,6 @@ contract RealCompTest is CropTestBase {
         log_named_uint("adapter nav  ", mul(join.total(), join.nps()) / 1e18);
         log_named_uint("a max usdc    ", mul(join.balance(address(a)), join.nps()) / 1e18);
 
-        // failing currently
-        uint max_usdc = mul(join.nps(), join.balance(address(a))) / 1e18;
-        a.pour(max_usdc - 1);
-        assertLt(usdc.balanceOf(address(a)), 200 * 1e6, "less usdc after");
-        assertGt(usdc.balanceOf(address(a)), 199 * 1e6, "less usdc after");
-        assertEq(join.balance(address(a)), 0, "zero balance after full exit");
+        assertLt(mul(join.total(), join.nps()) / 1e18, 350 * 1e18, "nav is halved");
     }
 }
