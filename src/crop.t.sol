@@ -663,8 +663,8 @@ contract RealCompTest is CropTestBase {
 
         a.join(0);
         // ~ 0.012 COMP per year
-        assertTrue(comp.balanceOf(address(a)) > 0.00003 ether);
-        assertTrue(comp.balanceOf(address(a)) < 0.00004 ether);
+        assertGt(comp.balanceOf(address(a)), 0.000025 ether);
+        assertLt(comp.balanceOf(address(a)), 0.000045 ether);
     }
 
     function test_reward_wound() public {
@@ -680,11 +680,11 @@ contract RealCompTest is CropTestBase {
 
         a.join(0);
         // ~ 0.035 COMP per year
-        assertTrue(comp.balanceOf(address(a)) > 0.00009 ether);
-        assertTrue(comp.balanceOf(address(a)) < 0.0001 ether);
+        assertGt(comp.balanceOf(address(a)), 0.00008 ether);
+        assertLt(comp.balanceOf(address(a)), 0.00011 ether);
 
-        assertTrue(get_cf() < join.maxf());
-        assertTrue(get_cf() < join.minf());
+        assertLt(get_cf(), join.maxf());
+        assertLt(get_cf(), join.minf());
     }
 
     function test_reward_wound_fully() public {
