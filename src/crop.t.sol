@@ -177,6 +177,12 @@ contract Usr {
                            ("exit(uint256)", val)
                         );
     }
+    function can_wind(uint borrow, uint n, uint loan) public returns (bool) {
+        return can_call(address(j),
+                         abi.encodeWithSignature
+                           ("wind(uint256,uint256,uint256)", borrow, n, loan)
+                        );
+    }
     function can_pour(uint val) public returns (bool) {
         return can_pour(val, 0);
     }
@@ -310,6 +316,12 @@ contract CropTestBase is DSTest {
         return can_call(address(join),
                         abi.encodeWithSignature
                            ("exit(uint256)", val)
+                        );
+    }
+    function can_wind(uint borrow, uint n, uint loan) public returns (bool) {
+        return can_call(address(join),
+                         abi.encodeWithSignature
+                           ("wind(uint256,uint256,uint256)", borrow, n, loan)
                         );
     }
     function can_pour(uint val) public returns (bool) {
@@ -657,7 +669,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        join.wind(0, 0);
+        join.wind(0, 0, 0);
 
         reward(1 days);
 
@@ -674,7 +686,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        join.wind(50 * 10**6, 0);
+        join.wind(50 * 10**6, 0, 0);
 
         reward(1 days);
 
@@ -694,7 +706,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        join.wind(0, 4);
+        join.wind(0, 4, 0);
 
         reward(1 days);
 
@@ -714,7 +726,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        join.wind(0, 5);
+        join.wind(0, 5, 0);
     }
 
     function test_wind_unwind() public {
@@ -725,7 +737,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        join.wind(0, 4);
+        join.wind(0, 4, 0);
 
         reward(1 days);
 
@@ -747,6 +759,45 @@ contract RealCompTest is CropTestBase {
 
         assertLt(get_cf(), join.maxf(), "under target post unwind");
         assertGt(get_cf(), join.minf(), "over minimum post unwind");
+    }
+
+    function test_flash_wind() public {
+        // given nav s0, we can calculate the minimum loan L needed to
+        // effect a wind up to a given u',
+        //
+        //   L/s0 >= (u'/cf - 1 + u' - u*u'/cf) / [(1 - u') * (1 - u)]
+        //
+        // e.g. for u=0, u'=0.675, L/s0 ~= 1.77
+        //
+        // we can also write the maximum u' for a given L,
+        //
+        //   u' <= (1 + (1 - u) * L / s0) / (1 + (1 - u) * (L / s0 + 1 / cf))
+        //
+        // and the borrow to directly achieve a given u'
+        //
+        //   x = s0 (1 / (1 - u') - 1 / (1 - u))
+        //
+        // e.g. for u=0, u'=0.675, x/s0 ~= 2.0769
+        //
+        // here we test the u' that we achieve with given L
+
+        (Usr a,) = init_user();
+        a.join(100 * 1e6);
+
+        assertTrue(!can_wind(207.69 * 1e6, 0, 176 * 1e6), "insufficient loan");
+        assertTrue( can_wind(207.69 * 1e6, 0, 177 * 1e6), "sufficient loan");
+
+        join.wind(207.69 * 1e6, 0, 177 * 1e6);
+        log_named_uint("cf", get_cf());
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
+
+        // we can also have wind determine the maximum borrow itself
+        // set_cf(0);
+        // join.wind(0, 1, 200 * 1e6);
+        // log_named_uint("cf", get_cf());
+        // assertGt(get_cf(), 0.674e18);
+        // assertLt(get_cf(), 0.675e18);
     }
 
     function set_cf(uint cf) internal {
@@ -858,7 +909,7 @@ contract RealCompTest is CropTestBase {
         assertEq(join.nps(), 1 ether, "initial nps is 1");
 
         log_named_uint("nps before wind   ", join.nps());
-        join.wind(0, 4);
+        join.wind(0, 4, 0);
 
         assertLt(get_cf(), join.maxf(), "under target");
         assertGt(get_cf(), join.minf(), "over minimum");
@@ -904,7 +955,7 @@ contract RealCompTest is CropTestBase {
         assertEq(usdc.balanceOf(address(a)), 100 * 1e6);
 
         logs("wind===");
-        join.wind(0, 4);
+        join.wind(0, 4, 0);
 
         assertLt(get_cf(), join.maxf(), "under target");
         assertGt(get_cf(), join.minf(), "over minimum");
@@ -1003,7 +1054,7 @@ contract RealCompTest is CropTestBase {
         enable_seize(address(this));
 
         join.join(100 * 1e6);
-        join.wind(0, 4);
+        join.wind(0, 4, 0);
 
         uint seize = 100 * 1e8;
 
@@ -1029,7 +1080,7 @@ contract RealCompTest is CropTestBase {
         log_named_uint("cusdc", cusdc.balanceOf(address(join)));
 
         logs("wind===");
-        join.wind(0, 4);
+        join.wind(0, 4, 0);
         log_named_uint("nps", join.nps());
         log_named_uint("cf", get_cf());
         log_named_uint("adapter usdc ", usdc.balanceOf(address(join)));

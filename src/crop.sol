@@ -222,59 +222,62 @@ contract CropJoin {
         crops[dst] = wmul(balance[dst], share);
     }
 
-
     uint256 public cf   = 0.75   ether;  // usdc max collateral factor
     uint256 public maxf = 0.675  ether;  // maximum collateral factor  (90%)
     uint256 public minf = 0.6375 ether;  // minimum collateral factor  (85%)
 
     // borrow_: how much underlying to borrow (dec decimals)
-    // n: how many times to repeat a max borrow loop before the
-    //    specified borrow/mint
-    function wind(uint borrow_, uint n) public {
+    // loops_:  how many times to repeat a max borrow loop before the
+    //          specified borrow/mint
+    function wind(uint borrow_, uint loops_, uint loan_) public {
         require(cgem.accrueInterest() == 0);
+        require(gem.transferFrom(msg.sender, address(this), loan_));
         require(cgem.mint(gem.balanceOf(address(this))) == 0);
-        uint max_borrow;
-        for (uint i=0; i < n; i++) {
-            max_borrow = sub(wmul(cgem.balanceOfUnderlying(address(this)), cf),
-                             cgem.borrowBalanceStored(address(this)));
+
+        for (uint i=0; i < loops_; i++) {
+            uint s = cgem.balanceOfUnderlying(address(this));
+            uint b = cgem.borrowBalanceStored(address(this));
+            uint max_borrow = sub(wmul(s, cf), b);
             require(cgem.borrow(max_borrow) == 0);
             require(cgem.mint(max_borrow) == 0);
         }
         require(cgem.borrow(borrow_) == 0);
         require(cgem.mint(borrow_) == 0);
+        require(cgem.redeemUnderlying(loan_) == 0);
+        require(gem.transfer(msg.sender, loan_));
+
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
         require(u < maxf);
     }
-    // repay_:  how much underlying to repay (dec decimals)
-    // n: how many times to repeat a max repay loop before the
-    //    specified redeem/repay
-    function unwind(uint repay_, uint n, uint exit_, uint loan_) public {
+    // repay_: how much underlying to repay (dec decimals)
+    // loops_: how many times to repeat a max repay loop before the
+    //         specified redeem/repay
+    function unwind(uint repay_, uint loops_, uint exit_, uint loan_) public {
         require(cgem.accrueInterest() == 0);
         require(gem.transferFrom(msg.sender, address(this), loan_));
         require(cgem.mint(gem.balanceOf(address(this))) == 0);
 
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
-        uint max_repay;
-        for (uint i=0; i < n ; i++) {
-            max_repay = sub(cgem.balanceOfUnderlying(address(this)),
-                            wdiv(cgem.borrowBalanceStored(address(this)), cf));
+        for (uint i=0; i < loops_; i++) {
+            uint s = cgem.balanceOfUnderlying(address(this));
+            uint b = cgem.borrowBalanceStored(address(this));
+            uint max_repay = wdiv(sub(wmul(s, cf), b), cf);
             require(cgem.redeemUnderlying(max_repay) == 0);
             require(cgem.repayBorrow(max_repay) == 0);
         }
         require(cgem.redeemUnderlying(repay_) == 0);
         require(cgem.repayBorrow(repay_) == 0);
         require(cgem.redeemUnderlying(add(exit_, loan_)) == 0);
+        require(gem.transfer(msg.sender, loan_));
+        exit(exit_);
+
         uint u_ = wdiv(cgem.borrowBalanceStored(address(this)),
                        cgem.balanceOfUnderlying(address(this)));
-
         bool ramping = u  < minf && u_ > u && u_ < maxf;
         bool damping = u  > maxf && u_ < u && u_ > minf;
         bool tamping = u_ > minf && u_ < maxf;
         require(ramping || damping || tamping);
-
-        exit(exit_);
-        require(gem.transfer(msg.sender, loan_));
     }
 }
