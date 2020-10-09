@@ -232,6 +232,8 @@ contract CropJoin {
     // borrow_: how much underlying to borrow (dec decimals)
     // loops_:  how many times to repeat a max borrow loop before the
     //          specified borrow/mint
+    // loan_:  how much underlying to lend to the contract for this
+    //         transaction
     function wind(uint borrow_, uint loops_, uint loan_) public {
         require(cgem.accrueInterest() == 0);
         if (loan_ > 0) {
@@ -270,9 +272,14 @@ contract CropJoin {
     // repay_: how much underlying to repay (dec decimals)
     // loops_: how many times to repeat a max repay loop before the
     //         specified redeem/repay
+    // exit_:  how much underlying to remove following unwind
+    // loan_:  how much underlying to lend to the contract for this
+    //         transaction
     function unwind(uint repay_, uint loops_, uint exit_, uint loan_) public {
         require(cgem.accrueInterest() == 0);
-        require(gem.transferFrom(msg.sender, address(this), loan_));
+        if (loan_ > 0) {
+            require(gem.transferFrom(msg.sender, address(this), loan_));
+        }
         require(cgem.mint(gem.balanceOf(address(this))) == 0);
 
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
@@ -280,15 +287,29 @@ contract CropJoin {
         for (uint i=0; i < loops_; i++) {
             uint s = cgem.balanceOfUnderlying(address(this));
             uint b = cgem.borrowBalanceStored(address(this));
-            uint max_repay = wdiv(sub(wmul(s, cf), b), cf);
-            require(cgem.redeemUnderlying(max_repay) == 0);
-            require(cgem.repayBorrow(max_repay) == 0);
+            uint x1 = wdiv(sub(wmul(s, cf), b), cf);
+            uint x2 = wdiv(sub(add(b, wmul(exit_, maxf)),
+                               wmul(sub(s, loan_), maxf)),
+                           sub(1e18, maxf));
+            uint max_repay = min(x1, x2);
+            if (max_repay > 0) {
+                require(cgem.redeemUnderlying(max_repay) == 0);
+                require(cgem.repayBorrow(max_repay) == 0);
+            }
         }
-        require(cgem.redeemUnderlying(repay_) == 0);
-        require(cgem.repayBorrow(repay_) == 0);
-        require(cgem.redeemUnderlying(add(exit_, loan_)) == 0);
-        require(gem.transfer(msg.sender, loan_));
-        exit(exit_);
+        if (repay_ > 0) {
+            require(cgem.redeemUnderlying(repay_) == 0);
+            require(cgem.repayBorrow(repay_) == 0);
+        }
+        if (exit_ > 0 || loan_ > 0) {
+            require(cgem.redeemUnderlying(add(exit_, loan_)) == 0);
+        }
+        if (loan_ > 0) {
+            require(gem.transfer(msg.sender, loan_));
+        }
+        if (exit_ > 0) {
+            exit(exit_);
+        }
 
         uint u_ = wdiv(cgem.borrowBalanceStored(address(this)),
                        cgem.balanceOfUnderlying(address(this)));

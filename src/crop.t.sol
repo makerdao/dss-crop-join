@@ -198,6 +198,12 @@ contract Usr {
                            ("unwind(uint256,uint256,uint256,uint256)", repay, n, 0, 0)
                         );
     }
+    function can_unwind(uint repay, uint n, uint exit_, uint loan_) public returns (bool) {
+        return can_call(address(j),
+                         abi.encodeWithSignature
+                           ("unwind(uint256,uint256,uint256,uint256)", repay, n, exit_, loan_)
+                        );
+    }
 }
 
 interface Hevm {
@@ -337,6 +343,12 @@ contract CropTestBase is DSTest {
         return can_call(address(join),
                         abi.encodeWithSignature
                            ("unwind(uint256,uint256,uint256,uint256)", repay, n, 0, 0)
+                        );
+    }
+    function can_unwind(uint repay, uint n, uint exit_, uint loan_) public returns (bool) {
+        return can_call(address(join),
+                         abi.encodeWithSignature
+                           ("unwind(uint256,uint256,uint256,uint256)", repay, n, exit_, loan_)
                         );
     }
 }
@@ -743,7 +755,7 @@ contract RealCompTest is CropTestBase {
         assertGt(get_cf(), join.minf(), "over minimum");
 
         log_named_uint("cf", get_cf());
-        reward(600 days);
+        reward(1000 days);
         log_named_uint("cf", get_cf());
 
         assertGt(get_cf(), join.maxf(), "over target after interest");
@@ -752,11 +764,32 @@ contract RealCompTest is CropTestBase {
         // gone over the target due to accumulated interest, so we
         // unwind to bring us back under the target leverage.
         assertTrue( can_unwind(0, 1), "able to unwind if over target");
-        assertTrue(!can_unwind(0, 2), "unable to unwind below minimum");
         join.unwind(0, 1, 0, 0);
 
         assertLt(get_cf(), join.maxf(), "under target post unwind");
         assertGt(get_cf(), join.minf(), "over minimum post unwind");
+    }
+
+    function test_unwind_multiple() public {
+        join.join(100e6);
+
+        set_cf(0.72e18);
+        join.unwind(0, 1, 0, 0);
+        log_named_uint("cf", get_cf());
+        join.unwind(0, 1, 0, 0);
+        log_named_uint("cf", get_cf());
+        join.unwind(0, 1, 0, 0);
+        log_named_uint("cf", get_cf());
+        join.unwind(0, 1, 0, 0);
+        log_named_uint("cf", get_cf());
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
+
+        set_cf(0.72e18);
+        join.unwind(0, 4, 0, 0);
+        log_named_uint("cf", get_cf());
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
     }
 
     function test_flash_wind_necessary_loan() public {
@@ -919,7 +952,7 @@ contract RealCompTest is CropTestBase {
     // wind / unwind make the underlying unavailable as it is deposited
     // into the ctoken. In order to exit we will have to free up some
     // underlying.
-    function wound_pour_exit(bool loan) public {
+    function wound_unwind_exit(bool loan) public {
         join.join(100 * 1e6);
 
         assertEq(comp.balanceOf(self), 0 ether, "no initial rewards");
@@ -967,11 +1000,71 @@ contract RealCompTest is CropTestBase {
             log_named_uint("u'", get_cf());
         }
     }
-    function test_wound_pour_exit() public {
-        wound_pour_exit(false);
+    function test_unwind_exit() public {
+        wound_unwind_exit(false);
     }
-    function test_wound_pour_exit_with_loan() public {
-        wound_pour_exit(true);
+    function test_unwind_exit_with_loan() public {
+        wound_unwind_exit(true);
+    }
+    function test_unwind_full_exit() public {
+        join.join(100 * 1e6);
+        set_cf(0.675e18);
+
+        // we can unwind in a single cycle using a loan
+        join.unwind(0, 1, 100e6 - 1e4, 177 * 1e6);
+
+        join.join(100 * 1e6);
+        set_cf(0.675e18);
+
+        // or we can unwind by iteration without a loan
+        join.unwind(0, 6, 100e6 - 1e4, 0);
+    }
+    function test_unwind_gas_flash() public {
+        join.join(100 * 1e6);
+        set_cf(0.675e18);
+        uint gas_before = gasleft();
+        join.unwind(0, 1, 100e6 - 1e4, 177e6);
+        uint gas_after = gasleft();
+
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
+        log_named_uint("s ", get_s());
+        log_named_uint("b ", get_b());
+        log_named_uint("s + b", get_s() + get_b());
+        log_named_uint("cf", get_cf());
+        log_named_uint("gas", gas_before - gas_after);
+    }
+    function test_unwind_gas_iteration() public {
+        join.join(100 * 1e6);
+        set_cf(0.675e18);
+        uint gas_before = gasleft();
+        join.unwind(0, 5, 100e6 - 1e4, 0);
+        uint gas_after = gasleft();
+
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
+        log_named_uint("s ", get_s());
+        log_named_uint("b ", get_b());
+        log_named_uint("s + b", get_s() + get_b());
+        log_named_uint("cf", get_cf());
+        log_named_uint("gas", gas_before - gas_after);
+    }
+    function test_unwind_gas_shallow() public {
+        // we can withdraw a fraction of the pool without loans or
+        // iterations
+        join.join(100 * 1e6);
+        set_cf(0.675e18);
+        uint gas_before = gasleft();
+        join.unwind(0, 1, 14e6, 0);
+        uint gas_after = gasleft();
+
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
+        log_named_uint("s ", get_s());
+        log_named_uint("b ", get_b());
+        log_named_uint("s + b", get_s() + get_b());
+        log_named_uint("cf", get_cf());
+        log_named_uint("gas", gas_before - gas_after);
     }
 
     // The nav of the adapter will drop over time, due to interest
