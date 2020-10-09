@@ -750,7 +750,7 @@ contract RealCompTest is CropTestBase {
     }
 
     function set_cf(uint cf) internal {
-        uint nav = join.nps() * join.total() / 1e18;  // underlying balance
+        uint nav = join.nav();
 
         // desired supply and borrow in terms of underlying
         uint x = cusdc.exchangeRateCurrent();
@@ -783,7 +783,7 @@ contract RealCompTest is CropTestBase {
         );
 
         log_named_uint("new u", get_cf());
-        log_named_uint("nav  ", join.nps() * join.total() / 1e18);
+        log_named_uint("nav  ", join.nav());
     }
 
     // wind / unwind make the underlying unavailable as it is deposited
@@ -1034,7 +1034,7 @@ contract RealCompTest is CropTestBase {
         log_named_uint("cf", get_cf());
         log_named_uint("adapter usdc ", usdc.balanceOf(address(join)));
         log_named_uint("adapter cusdc", cusdc.balanceOf(address(join)));
-        log_named_uint("adapter nav  ", mul(join.total(), join.nps()) / 1e18);
+        log_named_uint("adapter nav  ", join.nav());
         log_named_uint("a max usdc    ", mul(join.balance(address(a)), join.nps()) / 1e18);
 
         assertLt(get_cf(), join.maxf(), "under target");
@@ -1049,9 +1049,9 @@ contract RealCompTest is CropTestBase {
         log_named_uint("cf", get_cf());
         log_named_uint("adapter usdc ", usdc.balanceOf(address(join)));
         log_named_uint("adapter cusdc", cusdc.balanceOf(address(join)));
-        log_named_uint("adapter nav  ", mul(join.total(), join.nps()) / 1e18);
+        log_named_uint("adapter nav  ", join.nav());
         log_named_uint("a max usdc    ", mul(join.balance(address(a)), join.nps()) / 1e18);
 
-        assertLt(mul(join.total(), join.nps()) / 1e18, 350 * 1e18, "nav is halved");
+        assertLt(join.nav(), 350 * 1e18, "nav is halved");
     }
 }

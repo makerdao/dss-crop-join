@@ -131,14 +131,15 @@ contract CropJoin {
         z = mul(x, WAD) / y;
     }
 
+    function nav() public returns (uint) {
+        uint _nav = add(gem.balanceOf(address(this)),
+                        sub(cgem.balanceOfUnderlying(address(this)),
+                            cgem.borrowBalanceCurrent(address(this))));
+        return mul(_nav, 10 ** (18 - dec));
+    }
     function nps() public returns (uint) {
         if (total == 0) return WAD;
-        else {
-            uint nav = add(gem.balanceOf(address(this)),
-                           sub(cgem.balanceOfUnderlying(address(this)),
-                               cgem.borrowBalanceCurrent(address(this))));
-            return wdiv(mul(nav, 10 ** (18 - dec)), total);
-        }
+        else return wdiv(nav(), total);
     }
 
     function crop() internal virtual returns (uint) {
