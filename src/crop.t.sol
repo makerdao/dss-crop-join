@@ -644,6 +644,14 @@ contract RealCompTest is CropTestBase {
         usdc.approve(address(join), uint(-1));
     }
 
+    function get_s() internal returns (uint256 cf) {
+        require(cToken(address(cusdc)).accrueInterest() == 0);
+        return cToken(address(cusdc)).balanceOfUnderlying(address(join));
+    }
+    function get_b() internal returns (uint256 cf) {
+        require(cToken(address(cusdc)).accrueInterest() == 0);
+        return cToken(address(cusdc)).borrowBalanceStored(address(join));
+    }
     function get_cf() internal returns (uint256 cf) {
         require(cToken(address(cusdc)).accrueInterest() == 0);
         cf = wdiv(cToken(address(cusdc)).borrowBalanceStored(address(join)),
@@ -830,6 +838,9 @@ contract RealCompTest is CropTestBase {
         uint gas_before = gasleft();
         join.wind(0, 1, 200 * 1e6);
         uint gas_after = gasleft();
+        log_named_uint("s ", get_s());
+        log_named_uint("b ", get_b());
+        log_named_uint("s + b", get_s() + get_b());
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.674e18);
         assertLt(get_cf(), 0.675e18);
@@ -842,8 +853,28 @@ contract RealCompTest is CropTestBase {
         uint gas_before = gasleft();
         join.wind(0, 5, 0);
         uint gas_after = gasleft();
+
         assertGt(get_cf(), 0.674e18);
         assertLt(get_cf(), 0.675e18);
+        log_named_uint("s ", get_s());
+        log_named_uint("b ", get_b());
+        log_named_uint("s + b", get_s() + get_b());
+        log_named_uint("cf", get_cf());
+        log_named_uint("gas", gas_before - gas_after);
+    }
+    function test_wind_gas_partial_loan() public {
+        (Usr a,) = init_user();
+
+        a.join(100 * 1e6);
+        uint gas_before = gasleft();
+        join.wind(0, 3, 50e6);
+        uint gas_after = gasleft();
+
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
+        log_named_uint("s ", get_s());
+        log_named_uint("b ", get_b());
+        log_named_uint("s + b", get_s() + get_b());
         log_named_uint("cf", get_cf());
         log_named_uint("gas", gas_before - gas_after);
     }

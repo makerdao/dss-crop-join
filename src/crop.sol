@@ -234,8 +234,13 @@ contract CropJoin {
     //          specified borrow/mint
     function wind(uint borrow_, uint loops_, uint loan_) public {
         require(cgem.accrueInterest() == 0);
-        require(gem.transferFrom(msg.sender, address(this), loan_));
-        require(cgem.mint(gem.balanceOf(address(this))) == 0);
+        if (loan_ > 0) {
+            require(gem.transferFrom(msg.sender, address(this), loan_));
+        }
+        uint gems = gem.balanceOf(address(this));
+        if (gems > 0) {
+            require(cgem.mint(gems) == 0);
+        }
 
         for (uint i=0; i < loops_; i++) {
             uint s = cgem.balanceOfUnderlying(address(this));
@@ -244,13 +249,19 @@ contract CropJoin {
             uint x2 = wdiv(sub(wmul(sub(s, loan_), maxf), b),
                            sub(1e18, maxf));
             uint max_borrow = min(x1, x2);
-            require(cgem.borrow(max_borrow) == 0);
-            require(cgem.mint(max_borrow) == 0);
+            if (max_borrow > 0) {
+                require(cgem.borrow(max_borrow) == 0);
+                require(cgem.mint(max_borrow) == 0);
+            }
         }
-        require(cgem.borrow(borrow_) == 0);
-        require(cgem.mint(borrow_) == 0);
-        require(cgem.redeemUnderlying(loan_) == 0);
-        require(gem.transfer(msg.sender, loan_));
+        if (borrow_ > 0) {
+            require(cgem.borrow(borrow_) == 0);
+            require(cgem.mint(borrow_) == 0);
+        }
+        if (loan_ > 0) {
+            require(cgem.redeemUnderlying(loan_) == 0);
+            require(gem.transfer(msg.sender, loan_));
+        }
 
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
