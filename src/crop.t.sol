@@ -719,16 +719,6 @@ contract RealCompTest is CropTestBase {
         assertGt(get_cf(), join.minf(), "cf > minf");
     }
 
-    function testFail_over_wind() public {
-        (Usr a,) = init_user();
-        assertEq(comp.balanceOf(address(a)), 0 ether);
-
-        a.join(100 * 1e6);
-        assertEq(comp.balanceOf(address(a)), 0 ether);
-
-        join.wind(0, 5, 0);
-    }
-
     function test_wind_unwind() public {
         require(cToken(address(cusdc)).accrueInterest() == 0);
         (Usr a,) = init_user();
@@ -761,7 +751,7 @@ contract RealCompTest is CropTestBase {
         assertGt(get_cf(), join.minf(), "over minimum post unwind");
     }
 
-    function test_flash_wind() public {
+    function test_flash_wind_necessary_loan() public {
         // given nav s0, we can calculate the minimum loan L needed to
         // effect a wind up to a given u',
         //
@@ -791,13 +781,71 @@ contract RealCompTest is CropTestBase {
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.674e18);
         assertLt(get_cf(), 0.675e18);
+    }
 
+    function test_flash_wind_sufficient_loan() public {
         // we can also have wind determine the maximum borrow itself
-        // set_cf(0);
-        // join.wind(0, 1, 200 * 1e6);
-        // log_named_uint("cf", get_cf());
-        // assertGt(get_cf(), 0.674e18);
-        // assertLt(get_cf(), 0.675e18);
+        (Usr a,) = init_user();
+        set_usdc(address(a), 900e6);
+
+        a.join(100 * 1e6);
+        join.wind(0, 1, 200 * 1e6);
+        log_named_uint("cf", get_cf());
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
+
+        a.join(100 * 1e6);
+        logs("200");
+        join.wind(0, 1, 200 * 1e6);
+        log_named_uint("cf", get_cf());
+
+        a.join(100 * 1e6);
+        logs("100");
+        join.wind(0, 1, 100 * 1e6);
+        log_named_uint("cf", get_cf());
+
+        a.join(100 * 1e6);
+        logs("100");
+        join.wind(0, 1, 100 * 1e6);
+        log_named_uint("cf", get_cf());
+
+        a.join(100 * 1e6);
+        logs("150");
+        join.wind(0, 1, 150 * 1e6);
+        log_named_uint("cf", get_cf());
+
+        a.join(100 * 1e6);
+        logs("175");
+        join.wind(0, 1, 175 * 1e6);
+        log_named_uint("cf", get_cf());
+
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
+    }
+    // compare gas costs of a flash loan wind and a iteration wind
+    function test_wind_gas_flash() public {
+        (Usr a,) = init_user();
+
+        a.join(100 * 1e6);
+        uint gas_before = gasleft();
+        join.wind(0, 1, 200 * 1e6);
+        uint gas_after = gasleft();
+        log_named_uint("cf", get_cf());
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
+        log_named_uint("gas", gas_before - gas_after);
+    }
+    function test_wind_gas_iteration() public {
+        (Usr a,) = init_user();
+
+        a.join(100 * 1e6);
+        uint gas_before = gasleft();
+        join.wind(0, 5, 0);
+        uint gas_after = gasleft();
+        assertGt(get_cf(), 0.674e18);
+        assertLt(get_cf(), 0.675e18);
+        log_named_uint("cf", get_cf());
+        log_named_uint("gas", gas_before - gas_after);
     }
 
     function set_cf(uint cf) internal {

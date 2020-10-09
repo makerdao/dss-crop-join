@@ -130,6 +130,9 @@ contract CropJoin {
     function wdiv(uint x, uint y) public pure returns (uint z) {
         z = mul(x, WAD) / y;
     }
+    function min(uint x, uint y) internal pure returns (uint z) {
+        return x <= y ? x : y;
+    }
 
     function nav() public returns (uint) {
         uint _nav = add(gem.balanceOf(address(this)),
@@ -237,7 +240,10 @@ contract CropJoin {
         for (uint i=0; i < loops_; i++) {
             uint s = cgem.balanceOfUnderlying(address(this));
             uint b = cgem.borrowBalanceStored(address(this));
-            uint max_borrow = sub(wmul(s, cf), b);
+            uint x1 = sub(wmul(s, cf), b);
+            uint x2 = wdiv(sub(wmul(sub(s, loan_), maxf), b),
+                           sub(1e18, maxf));
+            uint max_borrow = min(x1, x2);
             require(cgem.borrow(max_borrow) == 0);
             require(cgem.mint(max_borrow) == 0);
         }
