@@ -142,7 +142,7 @@ contract Usr {
         j.flee();
     }
     function pour(uint wad) public {
-        j.pour(wad, 0);
+        j.unwind(0, 1, wad, 0);
     }
     function liquidateBorrow(address borrower, uint repayAmount) external
         returns (uint)
@@ -183,13 +183,13 @@ contract Usr {
     function can_pour(uint val, uint loan) public returns (bool) {
         return can_call(address(j),
                          abi.encodeWithSignature
-                           ("pour(uint256,uint256)", val, loan)
+                           ("unwind(uint256,uint256,uint256,uint256)", 0, 1, val, loan)
                         );
     }
     function can_unwind(uint repay, uint n) public returns (bool) {
         return can_call(address(j),
                          abi.encodeWithSignature
-                           ("unwind(uint256,uint256)", repay, n)
+                           ("unwind(uint256,uint256,uint256,uint256)", repay, n, 0, 0)
                         );
     }
 }
@@ -318,13 +318,13 @@ contract CropTestBase is DSTest {
     function can_pour(uint val, uint loan) public returns (bool) {
         return can_call(address(join),
                         abi.encodeWithSignature
-                           ("pour(uint256,uint256)", val, loan)
+                           ("unwind(uint256,uint256,uint256,uint256)", 0, 1, val, loan)
                         );
     }
     function can_unwind(uint repay, uint n) public returns (bool) {
         return can_call(address(join),
                         abi.encodeWithSignature
-                           ("unwind(uint256,uint256)", repay, n)
+                           ("unwind(uint256,uint256,uint256,uint256)", repay, n, 0, 0)
                         );
     }
 }
@@ -732,19 +732,18 @@ contract RealCompTest is CropTestBase {
         assertLt(get_cf(), join.maxf(), "under target");
         assertGt(get_cf(), join.minf(), "over minimum");
 
-        assertTrue(!can_unwind(0, 1), "unable to unwind if under target");
         log_named_uint("cf", get_cf());
-        reward(300 days);
+        reward(600 days);
         log_named_uint("cf", get_cf());
 
-        assertTrue(get_cf() > join.maxf(), "over target after interest");
+        assertGt(get_cf(), join.maxf(), "over target after interest");
 
         // unwind is used for deleveraging our position. Here we have
         // gone over the target due to accumulated interest, so we
         // unwind to bring us back under the target leverage.
         assertTrue( can_unwind(0, 1), "able to unwind if over target");
         assertTrue(!can_unwind(0, 2), "unable to unwind below minimum");
-        join.unwind(0, 1);
+        join.unwind(0, 1, 0, 0);
 
         assertLt(get_cf(), join.maxf(), "under target post unwind");
         assertGt(get_cf(), join.minf(), "over minimum post unwind");
@@ -817,7 +816,7 @@ contract RealCompTest is CropTestBase {
             log_named_uint("u ", get_cf());
 
             uint prev = usdc.balanceOf(address(this));
-            join.pour(10 * 1e6,  10 * 1e6);
+            join.unwind(0, 1, 10 * 1e6,  10 * 1e6);
             assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
 
             log_named_uint("s'", CToken(address(cusdc)).balanceOfUnderlying(address(join)));
@@ -830,7 +829,7 @@ contract RealCompTest is CropTestBase {
             log_named_uint("u ", get_cf());
 
             uint prev = usdc.balanceOf(address(this));
-            join.pour(10 * 1e6, 0);
+            join.unwind(0, 1, 10 * 1e6, 0);
             assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
 
             log_named_uint("s'", CToken(address(cusdc)).balanceOfUnderlying(address(join)));

@@ -248,13 +248,13 @@ contract CropJoin {
     // repay_:  how much underlying to repay (dec decimals)
     // n: how many times to repeat a max repay loop before the
     //    specified redeem/repay
-    function unwind(uint repay_, uint n) public {
+    function unwind(uint repay_, uint n, uint exit_, uint loan_) public {
         require(cgem.accrueInterest() == 0);
+        require(gem.transferFrom(msg.sender, address(this), loan_));
         require(cgem.mint(gem.balanceOf(address(this))) == 0);
+
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
-        require(u > maxf);
-
         uint max_repay;
         for (uint i=0; i < n ; i++) {
             max_repay = sub(cgem.balanceOfUnderlying(address(this)),
@@ -264,27 +264,16 @@ contract CropJoin {
         }
         require(cgem.redeemUnderlying(repay_) == 0);
         require(cgem.repayBorrow(repay_) == 0);
+        require(cgem.redeemUnderlying(add(exit_, loan_)) == 0);
         uint u_ = wdiv(cgem.borrowBalanceStored(address(this)),
                        cgem.balanceOfUnderlying(address(this)));
-        require(u_ < u);
-        require(u_ > minf);
-    }
 
-    function pour(uint val, uint loan) public {
-        require(cgem.accrueInterest() == 0);
-        require(gem.transferFrom(msg.sender, address(this), loan));
-        require(cgem.mint(loan) == 0);
+        bool ramping = u  < minf && u_ > u && u_ < maxf;
+        bool damping = u  > maxf && u_ < u && u_ > minf;
+        bool tamping = u_ > minf && u_ < maxf;
+        require(ramping || damping || tamping);
 
-        uint s = sub(cgem.balanceOfUnderlying(address(this)), loan);
-        uint b = cgem.borrowBalanceStored(address(this));
-        uint r = mul(val, b) / sub(s, b);  // ensure constant u
-
-        require(cgem.redeemUnderlying(r) == 0);
-        require(cgem.repayBorrow(r) == 0);
-        require(cgem.redeemUnderlying(add(val, loan)) == 0);
-        uint u = wdiv(cgem.borrowBalanceStored(address(this)),
-                      cgem.balanceOfUnderlying(address(this)));
-        exit(val);
-        require(gem.transfer(msg.sender, loan));
+        exit(exit_);
+        require(gem.transfer(msg.sender, loan_));
     }
 }
