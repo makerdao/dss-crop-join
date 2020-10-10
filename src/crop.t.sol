@@ -732,7 +732,7 @@ contract RealCompTest is CropTestBase {
 
         a.join(0);
         // ~ 0.11 COMP per year
-        assertGt(comp.balanceOf(address(a)), 0.00025 ether);
+        assertGt(comp.balanceOf(address(a)), 0.00015 ether);
         assertLt(comp.balanceOf(address(a)), 0.00035 ether);
 
         assertLt(get_cf(), join.maxf(), "cf < maxf");
