@@ -89,8 +89,8 @@ contract CropJoin {
     uint256     public total;  // total gems
     uint256     public stock;  // crop balance
 
-    mapping (address => uint) public crops;   // crops per user
-    mapping (address => uint) public balance; // gems per user
+    mapping (address => uint) public crops; // crops per user
+    mapping (address => uint) public stake; // gems per user
 
     constructor(address vat_, bytes32 ilk_, address gem_,
                 address cgem_, address comp_, address comptroller_) public
@@ -163,16 +163,16 @@ contract CropJoin {
         if (total > 0) share = add(share, wdiv(crop(), total));
 
         address usr = msg.sender;
-        require(comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr])));
+        require(comp.transfer(msg.sender, sub(wmul(stake[usr], share), crops[usr])));
         stock = comp.balanceOf(address(this));
         if (wad > 0) {
             require(gem.transferFrom(usr, address(this), val));
             vat.slip(ilk, usr, int(wad));
 
             total = add(total, wad);
-            balance[usr] = add(balance[usr], wad);
+            stake[usr] = add(stake[usr], wad);
         }
-        crops[usr] = wmul(balance[usr], share);
+        crops[usr] = wmul(stake[usr], share);
     }
 
     function exit(uint val) public {
@@ -182,16 +182,16 @@ contract CropJoin {
         if (total > 0) share = add(share, wdiv(crop(), total));
 
         address usr = msg.sender;
-        require(comp.transfer(msg.sender, sub(wmul(balance[usr], share), crops[usr])));
+        require(comp.transfer(msg.sender, sub(wmul(stake[usr], share), crops[usr])));
         stock = comp.balanceOf(address(this));
         if (wad > 0) {
             require(gem.transfer(usr, val));
             vat.slip(ilk, usr, -int(wad));
 
             total = sub(total, wad);
-            balance[usr] = sub(balance[usr], wad);
+            stake[usr] = sub(stake[usr], wad);
         }
-        crops[usr] = wmul(balance[usr], share);
+        crops[usr] = wmul(stake[usr], share);
     }
 
     function flee() public {
@@ -204,25 +204,25 @@ contract CropJoin {
         vat.slip(ilk, usr, -int(wad));
 
         total = sub(total, wad);
-        balance[usr] = sub(balance[usr], wad);
-        crops[usr] = wmul(balance[usr], share);
+        stake[usr] = sub(stake[usr], wad);
+        crops[usr] = wmul(stake[usr], share);
     }
 
     function tack(address src, address dst, uint wad) public {
         // collect and pay out any pending rewards
         if (total > 0) share = add(share, wdiv(crop(), total));
-        require(comp.transfer(src, sub(wmul(balance[src], share), crops[src])));
-        require(comp.transfer(dst, sub(wmul(balance[dst], share), crops[dst])));
+        require(comp.transfer(src, sub(wmul(stake[src], share), crops[src])));
+        require(comp.transfer(dst, sub(wmul(stake[dst], share), crops[dst])));
         stock = comp.balanceOf(address(this));
 
-        balance[src] = sub(balance[src], wad);
-        balance[dst] = add(balance[dst], wad);
+        stake[src] = sub(stake[src], wad);
+        stake[dst] = add(stake[dst], wad);
 
-        require(balance[src] >= add(vat.gem(ilk, src), vat.urns(ilk, src).ink));
-        require(balance[dst] <= add(vat.gem(ilk, dst), vat.urns(ilk, dst).ink));
+        require(stake[src] >= add(vat.gem(ilk, src), vat.urns(ilk, src).ink));
+        require(stake[dst] <= add(vat.gem(ilk, dst), vat.urns(ilk, dst).ink));
 
-        crops[src] = wmul(balance[src], share);
-        crops[dst] = wmul(balance[dst], share);
+        crops[src] = wmul(stake[src], share);
+        crops[dst] = wmul(stake[dst], share);
     }
 
     uint256 public cf   = 0.75   ether;  // usdc max collateral factor

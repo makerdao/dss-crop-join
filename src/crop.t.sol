@@ -503,18 +503,18 @@ contract CropTest is CropTestBase {
         reward(address(join), 50 * 1e18);
         vat.flux(ilk, address(a), address(b), 50 * 1e18);
 
-        assertEq(usdc.balanceOf(address(a)), 100e6, "a balance before exit");
-        assertEq(join.balance(address(a)),   100e18, "a join balance before");
+        assertEq(usdc.balanceOf(address(a)), 100e6,  "a balance before exit");
+        assertEq(join.stake(address(a)),     100e18, "a join balance before");
         a.exit(50 * 1e6);
-        assertEq(usdc.balanceOf(address(a)), 150e6, "a balance after exit");
-        assertEq(join.balance(address(a)),    50e18, "a join balance after");
+        assertEq(usdc.balanceOf(address(a)), 150e6,  "a balance after exit");
+        assertEq(join.stake(address(a)),      50e18, "a join balance after");
 
-        assertEq(usdc.balanceOf(address(b)), 200e6, "b balance before exit");
-        assertEq(join.balance(address(b)),     0, "b join balance before");
-        join.tack(address(a), address(b), 50e18);
+        assertEq(usdc.balanceOf(address(b)), 200e6,  "b balance before exit");
+        assertEq(join.stake(address(b)),       0e18, "b join balance before");
+        join.tack(address(a), address(b),     50e18);
         b.flee();
-        assertEq(usdc.balanceOf(address(b)), 250e6, "b balance after exit");
-        assertEq(join.balance(address(b)),     0, "b join balance after");
+        assertEq(usdc.balanceOf(address(b)), 250e6,  "b balance after exit");
+        assertEq(join.stake(address(b)),       0e18, "b join balance after");
     }
     function test_reap_after_flux() public {
         (Usr a, Usr b) = init_user();
@@ -534,19 +534,19 @@ contract CropTest is CropTestBase {
         // rewards on x, while b will not earn anything on x, until we
         // reset balances with `tack`
         assertTrue(!a.can_exit(100e6), "can't full exit after flux");
-        assertEq(join.balance(address(a)),   100e18);
+        assertEq(join.stake(address(a)),     100e18);
         a.exit(0);
         assertEq(comp.balanceOf(address(a)), 100e18, "can claim remaining rewards");
         reward(address(join), 50e18);
         a.exit(0);
         assertEq(comp.balanceOf(address(a)), 150e18, "rewards continue to accrue");
-        assertEq(join.balance(address(a)),   100e18, "balance is unchanged");
+        assertEq(join.stake(address(a)),     100e18, "balance is unchanged");
 
         join.tack(address(a), address(b),    100e18);
         reward(address(join), 50e18);
         a.exit(0);
         assertEq(comp.balanceOf(address(a)), 150e18, "rewards no longer increase");
-        assertEq(join.balance(address(a)),     0e18, "balance is zeroed");
+        assertEq(join.stake(address(a)),       0e18, "balance is zeroed");
         assertEq(comp.balanceOf(address(b)),   0e18, "b has no rewards yet");
         b.join(0);
         assertEq(comp.balanceOf(address(b)),  50e18, "b now receives rewards");
@@ -1092,27 +1092,27 @@ contract RealCompTest is CropTestBase {
         log_named_uint("nps after interest ", join.nps());
 
         assertEq(usdc.balanceOf(address(a)), 100 * 1e6, "usdc before exit");
-        assertEq(join.balance(address(a)), 100 ether, "balance before exit");
+        assertEq(join.stake(address(a)), 100 ether, "balance before exit");
 
-        uint max_usdc = mul(join.nps(), join.balance(address(a))) / 1e30;
+        uint max_usdc = mul(join.nps(), join.stake(address(a))) / 1e30;
         logs("===");
         log_named_uint("max usdc    ", max_usdc);
-        log_named_uint("join.balance", join.balance(address(a)));
+        log_named_uint("join.balance", join.stake(address(a)));
         log_named_uint("vat.gem     ", vat.gem(join.ilk(), address(a)));
         log_named_uint("usdc        ", usdc.balanceOf(address(join)));
         log_named_uint("cf", get_cf());
         logs("pour ===");
         a.pour(max_usdc);
         log_named_uint("nps after pour     ", join.nps());
-        log_named_uint("join.balance", join.balance(address(a)));
-        log_named_uint("join.balance", join.balance(address(a)) / 1e12);
+        log_named_uint("join.balance", join.stake(address(a)));
+        log_named_uint("join.balance", join.stake(address(a)) / 1e12);
         log_named_uint("vat.gem     ", vat.gem(join.ilk(), address(a)));
         log_named_uint("usdc        ", usdc.balanceOf(address(join)));
         log_named_uint("cf", get_cf());
         assertLt(usdc.balanceOf(address(a)), 200 * 1e6, "less usdc after");
         assertGt(usdc.balanceOf(address(a)), 199 * 1e6, "less usdc after");
 
-        assertLt(join.balance(address(a)), 1e18/1e6, "zero balance after full exit");
+        assertLt(join.stake(address(a)), 1e18/1e6, "zero balance after full exit");
     }
     function test_nav_drop_with_liquidation() public {
         require(cToken(address(cusdc)).accrueInterest() == 0);
@@ -1258,7 +1258,7 @@ contract RealCompTest is CropTestBase {
         log_named_uint("adapter usdc ", usdc.balanceOf(address(join)));
         log_named_uint("adapter cusdc", cusdc.balanceOf(address(join)));
         log_named_uint("adapter nav  ", join.nav());
-        log_named_uint("a max usdc    ", mul(join.balance(address(a)), join.nps()) / 1e18);
+        log_named_uint("a max usdc    ", mul(join.stake(address(a)), join.nps()) / 1e18);
 
         assertLt(get_cf(), join.maxf(), "under target");
         assertGt(get_cf(), join.minf(), "over minimum");
@@ -1273,7 +1273,7 @@ contract RealCompTest is CropTestBase {
         log_named_uint("adapter usdc ", usdc.balanceOf(address(join)));
         log_named_uint("adapter cusdc", cusdc.balanceOf(address(join)));
         log_named_uint("adapter nav  ", join.nav());
-        log_named_uint("a max usdc    ", mul(join.balance(address(a)), join.nps()) / 1e18);
+        log_named_uint("a max usdc    ", mul(join.stake(address(a)), join.nps()) / 1e18);
 
         assertLt(join.nav(), 350 * 1e18, "nav is halved");
     }
