@@ -135,19 +135,13 @@ contract CropJoin {
     }
 
     function tack(address src, address dst, uint wad) public {
-        // collect and pay out any pending rewards
-        if (total > 0) share = add(share, wdiv(crop(), total));
-        require(bonus.transfer(src, sub(wmul(stake[src], share), crops[src])));
-        require(bonus.transfer(dst, sub(wmul(stake[dst], share), crops[dst])));
-        stock = bonus.balanceOf(address(this));
-
         stake[src] = sub(stake[src], wad);
         stake[dst] = add(stake[dst], wad);
 
+        crops[src] = sub(crops[src], wmul(share, wad));
+        crops[dst] = add(crops[dst], wmul(share, wad));
+
         require(stake[src] >= add(vat.gem(ilk, src), vat.urns(ilk, src).ink));
         require(stake[dst] <= add(vat.gem(ilk, dst), vat.urns(ilk, dst).ink));
-
-        crops[src] = wmul(stake[src], share);
-        crops[dst] = wmul(stake[dst], share);
     }
 }

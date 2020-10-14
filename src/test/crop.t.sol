@@ -435,6 +435,59 @@ contract SimpleCropTest is CropTestBase {
         assertEq(comp.balanceOf(self), 20 * 1e18, "rewards invariant over flee");
         assertEq(usdc.balanceOf(self), 1000e6, "balance after flee");
     }
+
+    function test_tack() public {
+        /*
+           A user's pending rewards, assuming no further crop income, is
+           given by
+
+               stake[usr] * share - crops[usr]
+
+           After join/exit we set
+
+               crops[usr] = stake[usr] * share
+
+           Such that the pending rewards are zero.
+
+           With `tack` we transfer stake from one user to another, but
+           we must ensure that we also either (a) transfer crops or
+           (b) reap the rewards concurrently.
+
+           Here we check that tack accounts for rewards appropriately,
+           regardless of whether we use (a) or (b).
+        */
+        (Usr a, Usr b) = init_user();
+
+        // concurrent reap
+        a.join(100e6);
+        reward(address(adapter), 50e18);
+
+        a.join(0);
+        vat.flux(ilk, address(a), address(b), 100e18);
+        adapter.tack(address(a), address(b), 100e18);
+        b.join(0);
+
+        reward(address(adapter), 50e18);
+        a.exit(0);
+        b.exit(100e6);
+        assertEq(comp.balanceOf(address(a)), 50e18, "a rewards");
+        assertEq(comp.balanceOf(address(b)), 50e18, "b rewards");
+
+        // crop transfer
+        a.join(100e6);
+        reward(address(adapter), 50e18);
+
+        // a doesn't reap their rewards before flux so all their pending
+        // rewards go to b
+        vat.flux(ilk, address(a), address(b), 100e18);
+        adapter.tack(address(a), address(b), 100e18);
+
+        reward(address(adapter), 50e18);
+        a.exit(0);
+        b.exit(100e6);
+        assertEq(comp.balanceOf(address(a)),  50e18, "a rewards alt");
+        assertEq(comp.balanceOf(address(b)), 150e18, "b rewards alt");
+    }
 }
 
 // Here we use a mock cToken, comptroller and vat
