@@ -7,6 +7,7 @@ interface Hevm {
     function warp(uint256) external;
     function roll(uint256) external;
     function store(address,bytes32,bytes32) external;
+    function load(address,bytes32) external returns (bytes32);
 }
 
 contract CanCall {

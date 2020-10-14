@@ -493,10 +493,14 @@ contract CompTest is SimpleCropTest {
 
     function reward(address usr, uint wad) internal override {
         // override compAccrued in the comptroller
+        uint old = uint(hevm.load(
+            address(troll),
+            keccak256(abi.encode(usr, uint256(20)))
+        ));
         hevm.store(
             address(troll),
             keccak256(abi.encode(usr, uint256(20))),
-            bytes32(wad)
+            bytes32(old + wad)
         );
     }
     function test_reward() public override {
