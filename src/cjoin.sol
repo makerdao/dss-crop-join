@@ -61,7 +61,7 @@ contract USDCJoin is CropJoin {
 
     uint256 public cf   = 0.75   ether;  // usdc max collateral factor
     uint256 public maxf = 0.675  ether;  // maximum collateral factor  (90%)
-    uint256 public minf = 0.6375 ether;  // minimum collateral factor  (85%)
+    uint256 public minf = 0.674 ether;  // minimum collateral factor  (85%)
 
     constructor(address vat_, bytes32 ilk_, address gem_,
                 address cgem_, address comp_, address comptroller_)
@@ -116,8 +116,8 @@ contract USDCJoin is CropJoin {
             uint s = cgem.balanceOfUnderlying(address(this));
             uint b = cgem.borrowBalanceStored(address(this));
             uint x1 = sub(wmul(s, cf), b);
-            uint x2 = wdiv(sub(wmul(sub(s, loan_), maxf), b),
-                           sub(1e18, maxf));
+            uint x2 = wdiv(sub(wmul(sub(s, loan_), minf), b),
+                           sub(1e18, minf));
             uint max_borrow = min(x1, x2);
             if (max_borrow > 0) {
                 require(cgem.borrow(max_borrow) == 0);
@@ -145,13 +145,13 @@ contract USDCJoin is CropJoin {
     //         transaction
     function unwind(uint repay_, uint loops_, uint exit_, uint loan_) public {
         require(cgem.accrueInterest() == 0);
+        uint u = wdiv(cgem.borrowBalanceStored(address(this)),
+                      cgem.balanceOfUnderlying(address(this)));
         if (loan_ > 0) {
             require(gem.transferFrom(msg.sender, address(this), loan_));
         }
         require(cgem.mint(gem.balanceOf(address(this))) == 0);
 
-        uint u = wdiv(cgem.borrowBalanceStored(address(this)),
-                      cgem.balanceOfUnderlying(address(this)));
         for (uint i=0; i < loops_; i++) {
             uint s = cgem.balanceOfUnderlying(address(this));
             uint b = cgem.borrowBalanceStored(address(this));

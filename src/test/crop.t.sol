@@ -676,7 +676,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        adapter.wind(0, 4, 0);
+        adapter.wind(0, 5, 0);
 
         reward(1 days);
 
@@ -697,7 +697,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        adapter.wind(0, 4, 0);
+        adapter.wind(0, 5, 0);
 
         reward(1 days);
 
@@ -716,8 +716,8 @@ contract RealCompTest is CropTestBase {
         assertTrue( can_unwind(0, 1), "able to unwind if over target");
         adapter.unwind(0, 1, 0, 0);
 
-        assertLt(get_cf(), adapter.maxf(), "under target post unwind");
-        assertGt(get_cf(), adapter.minf(), "over minimum post unwind");
+        assertLt(get_cf(), 0.676e18, "near target post unwind");
+        assertGt(get_cf(), 0.674e18, "over minimum post unwind");
     }
 
     function test_unwind_multiple() public {
@@ -736,10 +736,39 @@ contract RealCompTest is CropTestBase {
         assertLt(get_cf(), 0.675e18);
 
         set_cf(0.72e18);
-        adapter.unwind(0, 4, 0, 0);
+        adapter.unwind(0, 8, 0, 0);
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.674e18);
         assertLt(get_cf(), 0.675e18);
+    }
+
+    // if utilisation ends up over the limit we will need to use a loan
+    // to unwind
+    function test_unwind_over_limit() public {
+        // we need a loan of
+        //   L / s0 >= (u - cf) / (cf * (1 - u) * (1 - cf))
+        adapter.join(100e6);
+        set_cf(0.77e18);
+        log_named_uint("cf", get_cf());
+
+        uint cf = 0.75e18;
+        uint u = get_cf();
+        uint Lmin = wmul(100e6, wdiv(sub(u, cf), wmul(wmul(cf, 1e18 - u), 1e18 - cf)));
+        log_named_uint("s", get_s());
+        log_named_uint("b", get_s());
+        log_named_uint("L", Lmin);
+
+        assertTrue(!can_unwind(0, 1, 0, 0));
+        assertTrue(!can_unwind(0, 1, 0, Lmin - 1e2));
+        assertTrue( can_unwind(0, 1, 0, Lmin));
+    }
+
+    function test_unwind_under_limit() public {
+        adapter.join(100e6);
+        set_cf(0.673e18);
+        log_named_uint("cf", get_cf());
+        assertTrue(!can_unwind(0, 1, 0, 0));
+        // todo: minimum exit amount
     }
 
     function test_flash_wind_necessary_loan() public {
@@ -782,7 +811,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         adapter.wind(0, 1, 200 * 1e6);
         log_named_uint("cf", get_cf());
-        assertGt(get_cf(), 0.674e18);
+        assertGt(get_cf(), 0.673e18);
         assertLt(get_cf(), 0.675e18);
 
         a.join(100 * 1e6);
@@ -810,7 +839,7 @@ contract RealCompTest is CropTestBase {
         adapter.wind(0, 1, 175 * 1e6);
         log_named_uint("cf", get_cf());
 
-        assertGt(get_cf(), 0.674e18);
+        assertGt(get_cf(), 0.673e18);
         assertLt(get_cf(), 0.675e18);
     }
     // compare gas costs of a flash loan wind and a iteration wind
@@ -825,7 +854,7 @@ contract RealCompTest is CropTestBase {
         log_named_uint("b ", get_b());
         log_named_uint("s + b", get_s() + get_b());
         log_named_uint("cf", get_cf());
-        assertGt(get_cf(), 0.674e18);
+        assertGt(get_cf(), 0.673e18);
         assertLt(get_cf(), 0.675e18);
         log_named_uint("gas", gas_before - gas_after);
     }
@@ -837,7 +866,7 @@ contract RealCompTest is CropTestBase {
         adapter.wind(0, 5, 0);
         uint gas_after = gasleft();
 
-        assertGt(get_cf(), 0.674e18);
+        assertGt(get_cf(), 0.673e18);
         assertLt(get_cf(), 0.675e18);
         log_named_uint("s ", get_s());
         log_named_uint("b ", get_b());
@@ -853,7 +882,7 @@ contract RealCompTest is CropTestBase {
         adapter.wind(0, 3, 50e6);
         uint gas_after = gasleft();
 
-        assertGt(get_cf(), 0.674e18);
+        assertGt(get_cf(), 0.673e18);
         assertLt(get_cf(), 0.675e18);
         log_named_uint("s ", get_s());
         log_named_uint("b ", get_b());
@@ -1031,10 +1060,10 @@ contract RealCompTest is CropTestBase {
         assertEq(adapter.nps(), 1 ether, "initial nps is 1");
 
         log_named_uint("nps before wind   ", adapter.nps());
-        adapter.wind(0, 4, 0);
+        adapter.wind(0, 5, 0);
 
-        assertLt(get_cf(), adapter.maxf(), "under target");
-        assertGt(get_cf(), adapter.minf(), "over minimum");
+        assertGt(get_cf(), 0.673e18, "near minimum");
+        assertLt(get_cf(), 0.675e18, "under target");
 
         log_named_uint("nps before interest", adapter.nps());
         reward(100 days);
@@ -1077,10 +1106,10 @@ contract RealCompTest is CropTestBase {
         assertEq(usdc.balanceOf(address(a)), 100 * 1e6);
 
         logs("wind===");
-        adapter.wind(0, 4, 0);
+        adapter.wind(0, 5, 0);
 
-        assertLt(get_cf(), adapter.maxf(), "under target");
-        assertGt(get_cf(), adapter.minf(), "over minimum");
+        assertGt(get_cf(), 0.673e18, "near minimum");
+        assertLt(get_cf(), 0.675e18, "under target");
 
         uint liquidity; uint shortfall; uint supp; uint borr;
         supp = CToken(address(cusdc)).balanceOfUnderlying(address(adapter));
@@ -1202,7 +1231,7 @@ contract RealCompTest is CropTestBase {
         log_named_uint("cusdc", cusdc.balanceOf(address(adapter)));
 
         logs("wind===");
-        adapter.wind(0, 4, 0);
+        adapter.wind(0, 5, 0);
         log_named_uint("nps", adapter.nps());
         log_named_uint("cf", get_cf());
         log_named_uint("adapter usdc ", usdc.balanceOf(address(adapter)));
@@ -1210,8 +1239,8 @@ contract RealCompTest is CropTestBase {
         log_named_uint("adapter nav  ", adapter.nav());
         log_named_uint("a max usdc    ", mul(adapter.stake(address(a)), adapter.nps()) / 1e18);
 
-        assertLt(get_cf(), adapter.maxf(), "under target");
-        assertGt(get_cf(), adapter.minf(), "over minimum");
+        assertGt(get_cf(), 0.673e18, "near minimum");
+        assertLt(get_cf(), 0.675e18, "under target");
 
         logs("seize===");
         uint seize = 350 * 1e6 * 1e18 / cusdc.exchangeRateCurrent();

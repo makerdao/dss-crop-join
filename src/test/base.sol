@@ -83,10 +83,19 @@ contract TestBase is DSTest {
         }
     }
 
+    function add(uint x, uint y) public pure returns (uint z) {
+        require((z = x + y) >= x, "ds-math-add-overflow");
+    }
+    function sub(uint x, uint y) public pure returns (uint z) {
+        require((z = x - y) <= x, "ds-math-sub-underflow");
+    }
     function mul(uint x, uint y) public pure returns (uint z) {
         require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
     }
     uint256 constant WAD  = 10 ** 18;
+    function wmul(uint x, uint y) public pure returns (uint z) {
+        z = mul(x, y) / WAD;
+    }
     function wdiv(uint x, uint y) public pure returns (uint z) {
         z = mul(x, WAD) / y;
     }
