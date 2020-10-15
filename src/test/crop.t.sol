@@ -3,7 +3,7 @@ pragma experimental ABIEncoderV2;
 
 import "./base.sol";
 
-import "../cjoin.sol";
+import "../wind.sol";
 
 contract MockVat is VatLike {
     mapping (bytes32 => mapping (address => uint)) public override gem;

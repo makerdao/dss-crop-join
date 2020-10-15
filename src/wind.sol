@@ -102,7 +102,7 @@ contract USDCJoin is CropJoin {
     //          specified borrow/mint
     // loan_:  how much underlying to lend to the contract for this
     //         transaction
-    function wind(uint borrow_, uint loops_, uint loan_) public {
+    function wind(uint borrow_, uint loops_, uint loan_) external {
         require(cgem.accrueInterest() == 0);
         if (loan_ > 0) {
             require(gem.transferFrom(msg.sender, address(this), loan_));
@@ -143,7 +143,7 @@ contract USDCJoin is CropJoin {
     // exit_:  how much underlying to remove following unwind
     // loan_:  how much underlying to lend to the contract for this
     //         transaction
-    function unwind(uint repay_, uint loops_, uint exit_, uint loan_) public {
+    function unwind(uint repay_, uint loops_, uint exit_, uint loan_) external {
         require(cgem.accrueInterest() == 0);
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
