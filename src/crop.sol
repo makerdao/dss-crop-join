@@ -29,12 +29,12 @@ contract CropJoin {
     ERC20       public gem;    // collateral token
     uint256     public dec;    // gem decimals
 
-    uint256     public share;  // crops per gem
-    uint256     public total;  // total gems
-    uint256     public stock;  // crop balance
+    uint256     public share;  // crops per gem    [ray]
+    uint256     public total;  // total gems       [wad]
+    uint256     public stock;  // crop balance     [wad]
 
-    mapping (address => uint) public crops; // crops per user
-    mapping (address => uint) public stake; // gems per user
+    mapping (address => uint) public crops; // crops per user  [wad]
+    mapping (address => uint) public stake; // gems per user   [wad]
 
     ERC20       public bonus;  // rewards token
 
@@ -64,14 +64,24 @@ contract CropJoin {
     function wdiv(uint x, uint y) public pure returns (uint z) {
         z = mul(x, WAD) / y;
     }
+    uint256 constant RAY  = 10 ** 27;
+    function rmul(uint x, uint y) public pure returns (uint z) {
+        z = mul(x, y) / RAY;
+    }
+    function rdiv(uint x, uint y) public pure returns (uint z) {
+        z = mul(x, RAY) / y;
+    }
     function min(uint x, uint y) internal pure returns (uint z) {
         return x <= y ? x : y;
     }
 
+    // Net Asset Valuation [wad]
     function nav() public virtual returns (uint) {
         uint _nav = gem.balanceOf(address(this));
         return mul(_nav, 10 ** (18 - dec));
     }
+
+    // Net Assets per Share [wad]
     function nps() public returns (uint) {
         if (total == 0) return WAD;
         else return wdiv(nav(), total);
@@ -86,10 +96,10 @@ contract CropJoin {
         uint wad = wdiv(mul(val, 10 ** (18 - dec)), nps());
         require(int(wad) >= 0);
 
-        if (total > 0) share = add(share, wdiv(crop(), total));
+        if (total > 0) share = add(share, rdiv(crop(), total));
 
         address usr = msg.sender;
-        require(bonus.transfer(msg.sender, sub(wmul(stake[usr], share), crops[usr])));
+        require(bonus.transfer(msg.sender, sub(rmul(stake[usr], share), crops[usr])));
         stock = bonus.balanceOf(address(this));
         if (wad > 0) {
             require(gem.transferFrom(usr, address(this), val));
@@ -98,17 +108,17 @@ contract CropJoin {
             total = add(total, wad);
             stake[usr] = add(stake[usr], wad);
         }
-        crops[usr] = wmul(stake[usr], share);
+        crops[usr] = rmul(stake[usr], share);
     }
 
     function exit(uint val) public {
         uint wad = wdiv(mul(val, 10 ** (18 - dec)), nps());
         require(int(wad) >= 0);
 
-        if (total > 0) share = add(share, wdiv(crop(), total));
+        if (total > 0) share = add(share, rdiv(crop(), total));
 
         address usr = msg.sender;
-        require(bonus.transfer(msg.sender, sub(wmul(stake[usr], share), crops[usr])));
+        require(bonus.transfer(msg.sender, sub(rmul(stake[usr], share), crops[usr])));
         stock = bonus.balanceOf(address(this));
         if (wad > 0) {
             require(gem.transfer(usr, val));
@@ -117,7 +127,7 @@ contract CropJoin {
             total = sub(total, wad);
             stake[usr] = sub(stake[usr], wad);
         }
-        crops[usr] = wmul(stake[usr], share);
+        crops[usr] = rmul(stake[usr], share);
     }
 
     function flee() public {
@@ -131,15 +141,15 @@ contract CropJoin {
 
         total = sub(total, wad);
         stake[usr] = sub(stake[usr], wad);
-        crops[usr] = wmul(stake[usr], share);
+        crops[usr] = rmul(stake[usr], share);
     }
 
     function tack(address src, address dst, uint wad) public {
         stake[src] = sub(stake[src], wad);
         stake[dst] = add(stake[dst], wad);
 
-        crops[src] = sub(crops[src], wmul(share, wad));
-        crops[dst] = add(crops[dst], wmul(share, wad));
+        crops[src] = sub(crops[src], rmul(share, wad));
+        crops[dst] = add(crops[dst], rmul(share, wad));
 
         require(stake[src] >= add(vat.gem(ilk, src), vat.urns(ilk, src).ink));
         require(stake[dst] <= add(vat.gem(ilk, dst), vat.urns(ilk, dst).ink));
