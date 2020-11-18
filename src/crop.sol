@@ -91,7 +91,7 @@ contract CropJoin {
         return sub(bonus.balanceOf(address(this)), stock);
     }
 
-    // decimals: underlying=dec cToken=8 comp=18 gem=18
+    // decimals: underlying=dec bonus=18 gem=18
     function join(uint256 val) public {
         uint256 wad = wdiv(mul(val, 10 ** (18 - dec)), nps());
         require(int256(wad) >= 0);
@@ -118,7 +118,7 @@ contract CropJoin {
         if (total > 0) share = add(share, rdiv(crop(), total));
 
         address usr = msg.sender;
-        require(bonus.transfer(msg.sender, sub(rmul(stake[usr], share), crops[usr])));
+        require(bonus.transfer(usr, sub(rmul(stake[usr], share), crops[usr])));
         stock = bonus.balanceOf(address(this));
         if (wad > 0) {
             require(gem.transfer(usr, val));
