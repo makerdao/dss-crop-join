@@ -97,6 +97,10 @@ contract USDCJoin is CropJoin {
         return sub(bonus.balanceOf(address(this)), stock);
     }
 
+    // TODO: `cage`
+    //        - bypass `crop`
+    //        - set target to 0
+
     // borrow_: how much underlying to borrow (dec decimals)
     // loops_:  how many times to repeat a max borrow loop before the
     //          specified borrow/mint
