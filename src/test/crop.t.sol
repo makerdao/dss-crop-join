@@ -28,6 +28,7 @@ contract MockVat is VatLike {
         gem[ilk][src] = sub(gem[ilk][src], wad);
         gem[ilk][dst] = add(gem[ilk][dst], wad);
     }
+    function hope(address usr) external {}
 }
 
 contract Token {
@@ -177,6 +178,9 @@ contract Usr is CanJoin {
         CToken ctoken = CToken(adapter.cgem());
         return ctoken.liquidateBorrow(borrower, repayAmount, ctoken);
     }
+    function hope(address vat, address usr) public {
+        MockVat(vat).hope(usr);
+    }
 }
 
 contract CropTestBase is TestBase, CanJoin {
@@ -186,7 +190,7 @@ contract CropTestBase is TestBase, CanJoin {
     Troll    troll;
     MockVat  vat;
     address  self;
-    bytes32  ilk = "usdc-c";
+    bytes32  ilk = "USDC-C";
 
     function set_usdc(address usr, uint val) internal {
         hevm.store(
@@ -205,6 +209,8 @@ contract CropTestBase is TestBase, CanJoin {
 
         a.approve(address(usdc), address(adapter));
         b.approve(address(usdc), address(adapter));
+
+        a.hope(address(vat), address(this));
     }
 }
 
@@ -1255,5 +1261,77 @@ contract RealCompTest is CropTestBase {
         log_named_uint("a max usdc    ", mul(adapter.stake(address(a)), adapter.nps()) / 1e18);
 
         assertLt(adapter.nav(), 350 * 1e18, "nav is halved");
+    }
+}
+
+import "../spell.sol";
+
+interface Pause {
+    function owner() external view returns (address);
+    function delay() external view returns (uint256);
+}
+
+contract RealMakerTest is SimpleCropTest {
+    address  pause = 0xbE286431454714F511008713973d3B053A2d38f3;
+    DssSpell spell;
+
+    ChainlogAbstract constant CHANGELOG = ChainlogAbstract(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
+
+    function setUp() public override {
+        spell = new DssSpell();
+
+        // take control of the pause
+        hevm.store(pause, bytes32(uint(1)), bytes32(uint256(uint160(address(spell)))));
+        // and set zero delay
+        hevm.store(pause, bytes32(uint(4)), bytes32(uint256(0)));
+
+        self  = address(this);
+        init();
+
+        usdc  = Token(CHANGELOG.getAddress("USDC"));
+        cusdc = cToken(CHANGELOG.getAddress("CUSDC"));
+        comp  = Token(CHANGELOG.getAddress("COMP"));
+        troll = Troll(0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B);
+        vat   = MockVat(CHANGELOG.getAddress("MCD_VAT"));
+        adapter = USDCJoin(CHANGELOG.getAddress("MCD_JOIN_USDC_C"));
+
+        // give ourselves some usdc
+        set_usdc(address(this), 1000e6);
+    }
+
+    function init() internal {
+        uint gas_before_schedule = gasleft();
+        hevm.warp(now - 6 hours);
+        spell.schedule();
+
+        uint gas_before_execute = gasleft();
+        hevm.warp(now + 1);
+        spell.cast();
+        uint gas_after_execute = gasleft();
+
+        log_named_uint("schedule gas", gas_before_schedule - gas_before_execute);
+        log_named_uint("execute  gas", gas_before_execute  - gas_after_execute);
+    }
+
+    function reward(address usr, uint wad) internal override {
+        // override compAccrued in the comptroller
+        uint old = uint(hevm.load(
+            address(troll),
+            keccak256(abi.encode(usr, uint256(20)))
+        ));
+        hevm.store(
+            address(troll),
+            keccak256(abi.encode(usr, uint256(20))),
+            bytes32(old + wad)
+        );
+    }
+    function test_reward() public override {
+        reward(self, 100 ether);
+        assertEq(troll.compAccrued(self), 100 ether);
+    }
+
+    function test_setup() public {
+        assertEq(Pause(pause).owner(), address(spell));
+        assertEq(Pause(pause).delay(), 0);
     }
 }
