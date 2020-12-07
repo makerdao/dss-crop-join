@@ -34,54 +34,7 @@ contract CanCall {
 }
 
 contract TestBase is DSTest {
-    Hevm hevm = Hevm(address(bytes20(uint160(uint256(keccak256('hevm cheat code'))))));
-
-    function assertTrue(bool b, bytes32 err) internal {
-        if (!b) {
-            emit log_named_bytes32("Fail: ", err);
-            assertTrue(b);
-        }
-    }
-    function assertEq(int a, int b, bytes32 err) internal {
-        if (a != b) {
-            emit log_named_bytes32("Fail: ", err);
-            assertEq(a, b);
-        }
-    }
-    function assertEq(uint a, uint b, bytes32 err) internal {
-        if (a != b) {
-            emit log_named_bytes32("Fail: ", err);
-            assertEq(a, b);
-        }
-    }
-    function assertGt(uint a, uint b, bytes32 err) internal {
-        if (a <= b) {
-            emit log_named_bytes32("Fail: ", err);
-            assertGt(a, b);
-        }
-    }
-    function assertGt(uint a, uint b) internal {
-        if (a <= b) {
-            emit log_bytes32("Error: a > b not satisfied");
-            emit log_named_uint("         a", a);
-            emit log_named_uint("         b", b);
-            fail();
-        }
-    }
-    function assertLt(uint a, uint b, bytes32 err) internal {
-        if (a >= b) {
-            emit log_named_bytes32("Fail: ", err);
-            assertLt(a, b);
-        }
-    }
-    function assertLt(uint a, uint b) internal {
-        if (a >= b) {
-            emit log_bytes32("Error: a < b not satisfied");
-            emit log_named_uint("         a", a);
-            emit log_named_uint("         b", b);
-            fail();
-        }
-    }
+    Hevm hevm = Hevm(HEVM_ADDRESS);
 
     function add(uint x, uint y) public pure returns (uint z) {
         require((z = x + y) >= x, "ds-math-add-overflow");
