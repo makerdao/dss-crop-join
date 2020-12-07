@@ -28,8 +28,8 @@ import "lib/dss-interfaces/src/dss/SpotAbstract.sol";
 import "lib/dss-interfaces/src/dss/VatAbstract.sol";
 import "lib/dss-interfaces/src/dss/ChainlogAbstract.sol";
 
-import "./pip.sol";
-import "./wind.sol";
+import "../pip.sol";
+import "../wind.sol";
 
 interface FlipFab {
     function newFlip(address,address,bytes32) external returns (address);

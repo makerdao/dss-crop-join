@@ -1,5 +1,3 @@
-pragma solidity 0.5.12;
-
 contract Rates {
 
     mapping (uint256 => uint256) public rates;

@@ -1264,7 +1264,7 @@ contract RealCompTest is CropTestBase {
     }
 }
 
-import "../spell.sol";
+import "../spell/DssSpell.sol";
 
 interface Pause {
     function owner() external view returns (address);
