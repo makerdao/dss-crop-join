@@ -184,13 +184,14 @@ contract Usr is CanJoin {
 }
 
 contract CropTestBase is TestBase, CanJoin {
-    Token    usdc;
-    cToken   cusdc;
-    Token    comp;
-    Troll    troll;
-    MockVat  vat;
-    address  self;
-    bytes32  ilk = "USDC-C";
+    CompStrat strategy;
+    Token     usdc;
+    cToken    cusdc;
+    Token     comp;
+    Troll     troll;
+    MockVat   vat;
+    address   self;
+    bytes32   ilk = "USDC-C";
 
     function set_usdc(address usr, uint val) internal {
         hevm.store(
@@ -224,13 +225,18 @@ contract SimpleCropTest is CropTestBase {
         comp  = new Token(18, 0);
         troll = new Troll(address(comp));
         vat   = new MockVat();
+        strategy = new CompStrat( address(usdc)
+                                , address(cusdc)
+                                , address(comp)
+                                , address(troll)
+                                );
         adapter = new USDCJoin( address(vat)
                               , ilk
                               , address(usdc)
-                              , address(cusdc)
                               , address(comp)
-                              , address(troll)
+                              , address(strategy)
                               );
+        strategy.rely(address(adapter));
     }
 
     function reward(address usr, uint wad) internal virtual {
@@ -248,7 +254,7 @@ contract SimpleCropTest is CropTestBase {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
@@ -264,7 +270,7 @@ contract SimpleCropTest is CropTestBase {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
@@ -284,7 +290,7 @@ contract SimpleCropTest is CropTestBase {
         adapter.join(100 * 1e6);
         assertEq(comp.balanceOf(self), 0 * 1e18, "no initial rewards");
 
-        reward(address(adapter), 10 * 1e18);
+        reward(address(strategy), 10 * 1e18);
         adapter.join(0); adapter.join(0);  // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
@@ -297,7 +303,7 @@ contract SimpleCropTest is CropTestBase {
         adapter.join(50 * 1e6);
 
         assertEq(comp.balanceOf(self), 10 * 1e18);
-        reward(address(adapter), 10 * 1e18);
+        reward(address(strategy), 10 * 1e18);
         adapter.join(10 * 1e6);
         assertEq(comp.balanceOf(self), 20 * 1e18);
     }
@@ -307,7 +313,7 @@ contract SimpleCropTest is CropTestBase {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
@@ -321,13 +327,13 @@ contract SimpleCropTest is CropTestBase {
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
         assertEq(comp.balanceOf(address(b)), 20 * 1e18);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
         a.join(20 * 1e6);
         a.join(0); b.reap();
         assertEq(comp.balanceOf(address(a)), 60 * 1e18);
         assertEq(comp.balanceOf(address(b)), 40 * 1e18);
 
-        reward(address(adapter), 30 * 1e18);
+        reward(address(strategy), 30 * 1e18);
         a.join(0); b.reap();
         assertEq(comp.balanceOf(address(a)), 80 * 1e18);
         assertEq(comp.balanceOf(address(b)), 50 * 1e18);
@@ -341,12 +347,12 @@ contract SimpleCropTest is CropTestBase {
         (Usr a, Usr b) = init_user();
 
         a.join(100 * 1e6);
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0); a.join(0); // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
         vat.flux(ilk, address(a), address(b), 50 * 1e18);
         b.join(0);
         assertEq(comp.balanceOf(address(b)),  0 * 1e18, "if nonzero we have a problem");
@@ -357,12 +363,12 @@ contract SimpleCropTest is CropTestBase {
         (Usr a, Usr b) = init_user();
 
         a.join(100 * 1e6);
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0); a.join(0); // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
         vat.flux(ilk, address(a), address(b), 50 * 1e18);
 
         assertEq(usdc.balanceOf(address(a)), 100e6,  "a balance before exit");
@@ -382,14 +388,14 @@ contract SimpleCropTest is CropTestBase {
         (Usr a, Usr b) = init_user();
 
         a.join(100 * 1e6);
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0); a.join(0); // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
         assertTrue( a.can_exit( 50e6), "can exit before flux");
         vat.flux(ilk, address(a), address(b), 100e18);
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
 
         // if x gems are transferred from a to b, a will continue to earn
         // rewards on x, while b will not earn anything on x, until we
@@ -400,7 +406,7 @@ contract SimpleCropTest is CropTestBase {
 
         assertEq(comp.balanceOf(address(a)), 100e18, "can claim remaining rewards");
 
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
         a.exit(0);
 
         assertEq(comp.balanceOf(address(a)), 150e18, "rewards continue to accrue");
@@ -408,7 +414,7 @@ contract SimpleCropTest is CropTestBase {
         assertEq(adapter.stake(address(a)),     100e18, "balance is unchanged");
 
         adapter.tack(address(a), address(b),    100e18);
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
         a.exit(0);
 
         assertEq(comp.balanceOf(address(a)), 150e18, "rewards no longer increase");
@@ -427,15 +433,15 @@ contract SimpleCropTest is CropTestBase {
         adapter.join(100 * 1e6);
         assertEq(comp.balanceOf(self), 0 * 1e18, "no initial rewards");
 
-        reward(address(adapter), 10 * 1e18);
+        reward(address(strategy), 10 * 1e18);
         adapter.join(0); adapter.join(0);  // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
-        reward(address(adapter), 10 * 1e18);
+        reward(address(strategy), 10 * 1e18);
         adapter.exit(50 * 1e6);
         assertEq(comp.balanceOf(self), 20 * 1e18, "rewards increase with exit");
 
-        reward(address(adapter), 10 * 1e18);
+        reward(address(strategy), 10 * 1e18);
         assertEq(usdc.balanceOf(self),  950e6, "balance before flee");
         adapter.flee();
         assertEq(comp.balanceOf(self), 20 * 1e18, "rewards invariant over flee");
@@ -466,14 +472,14 @@ contract SimpleCropTest is CropTestBase {
 
         // concurrent reap
         a.join(100e6);
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
 
         a.join(0);
         vat.flux(ilk, address(a), address(b), 100e18);
         adapter.tack(address(a), address(b), 100e18);
         b.join(0);
 
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
         a.exit(0);
         b.exit(100e6);
         assertEq(comp.balanceOf(address(a)), 50e18, "a rewards");
@@ -481,14 +487,14 @@ contract SimpleCropTest is CropTestBase {
 
         // crop transfer
         a.join(100e6);
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
 
         // a doesn't reap their rewards before flux so all their pending
         // rewards go to b
         vat.flux(ilk, address(a), address(b), 100e18);
         adapter.tack(address(a), address(b), 100e18);
 
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
         a.exit(0);
         b.exit(100e6);
         assertEq(comp.balanceOf(address(a)),  50e18, "a rewards alt");
@@ -505,13 +511,18 @@ contract CropTest is SimpleCropTest {
         comp  = new Token(18, 0);
         troll = new Troll(address(comp));
         vat   = new MockVat();
+        strategy = new CompStrat( address(usdc)
+                                , address(cusdc)
+                                , address(comp)
+                                , address(troll)
+                                );
         adapter = new USDCJoin( address(vat)
                               , ilk
                               , address(usdc)
-                              , address(cusdc)
                               , address(comp)
-                              , address(troll)
+                              , address(strategy)
                               );
+        strategy.rely(address(adapter));
     }
 
     function reward(address usr, uint wad) internal override {
@@ -536,13 +547,18 @@ contract CompTest is SimpleCropTest {
         comp  =  Token(0xc00e94Cb662C3520282E6f5717214004A7f26888);
         troll =  Troll(0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B);
 
+        strategy = new CompStrat( address(usdc)
+                                , address(cusdc)
+                                , address(comp)
+                                , address(troll)
+                                );
         adapter = new USDCJoin( address(vat)
                               , ilk
                               , address(usdc)
-                              , address(cusdc)
                               , address(comp)
-                              , address(troll)
+                              , address(strategy)
                               );
+        strategy.rely(address(adapter));
 
         // give ourselves some usdc
         set_usdc(address(this), 1000e6);
@@ -596,13 +612,18 @@ contract RealCompTest is CropTestBase {
         comp  =  Token(0xc00e94Cb662C3520282E6f5717214004A7f26888);
         troll =  Troll(0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B);
 
+        strategy = new CompStrat( address(usdc)
+                                , address(cusdc)
+                                , address(comp)
+                                , address(troll)
+                                );
         adapter = new USDCJoin( address(vat)
                               , ilk
                               , address(usdc)
-                              , address(cusdc)
                               , address(comp)
-                              , address(troll)
+                              , address(strategy)
                               );
+        strategy.rely(address(adapter));
 
         // give ourselves some usdc
         set_usdc(address(this), 1000e6);

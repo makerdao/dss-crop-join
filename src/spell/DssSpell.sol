@@ -79,13 +79,17 @@ contract SpellAction {
         address COMP         = CHANGELOG.getAddress("COMP");
 
         // set up adapter, flipper and pip
+        address MCD_USDC_C_STRATEGY = address(new CompStrat( USDC
+                                                           , CUSDC
+                                                           , COMP
+                                                           , COMPTROLLER
+                                                           ));
         address MCD_JOIN_USDC_C = address(new USDCJoin( MCD_VAT
-                                         , ILK
-                                         , USDC
-                                         , CUSDC
-                                         , COMP
-                                         , COMPTROLLER
-                                         ));
+                                                      , ILK
+                                                      , USDC
+                                                      , COMP
+                                                      , MCD_USDC_C_STRATEGY
+                                                      ));
         address MCD_FLIP_USDC_C = FlipFab(FLIP_FAB).newFlip(MCD_VAT, MCD_CAT, ILK);
         address PIP_USDC_C = address(new CropValue(MCD_JOIN_USDC_C));
 

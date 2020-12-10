@@ -71,9 +71,6 @@ contract CropJoin {
     function rdiv(uint x, uint y) public pure returns (uint z) {
         z = mul(x, RAY) / y;
     }
-    function min(uint x, uint y) internal pure returns (uint z) {
-        return x <= y ? x : y;
-    }
 
     // Net Asset Valuation [wad]
     function nav() public virtual returns (uint) {
@@ -92,7 +89,7 @@ contract CropJoin {
     }
 
     // decimals: underlying=dec cToken=8 comp=18 gem=18
-    function join(uint256 val) public {
+    function join(uint256 val) public virtual {
         uint wad = wdiv(mul(val, 10 ** (18 - dec)), nps());
         require(int(wad) >= 0);
 
@@ -111,7 +108,7 @@ contract CropJoin {
         crops[usr] = rmul(stake[usr], share);
     }
 
-    function exit(uint val) public {
+    function exit(uint val) public virtual {
         uint wad = wdiv(mul(val, 10 ** (18 - dec)), nps());
         require(int(wad) >= 0);
 
@@ -130,7 +127,7 @@ contract CropJoin {
         crops[usr] = rmul(stake[usr], share);
     }
 
-    function flee() public {
+    function flee() public virtual {
         address usr = msg.sender;
 
         uint wad = vat.gem(ilk, usr);
