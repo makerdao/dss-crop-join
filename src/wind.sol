@@ -102,20 +102,12 @@ contract USDCJoin is CropJoin {
     }
 
     // todo: remove?
-    function wind(uint borrow_, uint loops_, uint loan_) external {
-        strategy.wind(borrow_, loops_, loan_);
-    }
+    // need to deal with instances of adapter.unwind in tests
     function unwind(uint repay_, uint loops_, uint exit_, uint loan_) external {
+        gem.transferFrom(msg.sender, address(this), loan_);
         strategy.unwind(repay_, loops_, exit_, loan_);
-    }
-    function cgem() external returns (address) {
-        return strategy.cgem();
-    }
-    function maxf() external returns (uint256) {
-        return strategy.maxf();
-    }
-    function minf() external returns (uint256) {
-        return strategy.minf();
+        super.exit(exit_);
+        gem.transfer(msg.sender, loan_);
     }
 }
 
@@ -125,6 +117,8 @@ contract CompStrat {
     CToken      public comp;
     Comptroller public comptroller;
 
+    // todo: cage function (minf=maxf=0)
+    // todo: make configurable
     uint256 public cf   = 0.75   ether;  // usdc max collateral factor
     uint256 public maxf = 0.675  ether;  // maximum collateral factor  (90%)
     uint256 public minf = 0.674  ether;  // minimum collateral factor  (85%)
@@ -223,6 +217,8 @@ contract CompStrat {
         for (uint i=0; i < loops_; i++) {
             uint s = cgem.balanceOfUnderlying(address(this));
             uint b = cgem.borrowBalanceStored(address(this));
+            // todo: break if s,b small
+            // todo: when do these subs fail exactly? can we avoid it?
             uint x1 = sub(wmul(s, cf), b);
             uint x2 = wdiv(sub(wmul(sub(s, loan_), minf), b),
                            sub(1e18, minf));
@@ -261,6 +257,7 @@ contract CompStrat {
         require(cgem.mint(gem.balanceOf(address(this))) == 0);
 
         for (uint i=0; i < loops_; i++) {
+            // todo: how do we know when we have done enough loop to exit?
             uint s = cgem.balanceOfUnderlying(address(this));
             uint b = cgem.borrowBalanceStored(address(this));
             uint x1 = wdiv(sub(wmul(s, cf), b), cf);
