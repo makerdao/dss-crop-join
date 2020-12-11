@@ -123,6 +123,8 @@ contract CompStrat {
     uint256 public maxf = 0.675  ether;  // maximum collateral factor  (90%)
     uint256 public minf = 0.674  ether;  // minimum collateral factor  (85%)
 
+    uint256 constant DUST = 1e6;  // value (in usdc) below which to stop looping
+
     constructor(address gem_, address cgem_, address comp_, address comptroller_)
         public
     {
@@ -217,16 +219,17 @@ contract CompStrat {
         for (uint i=0; i < loops_; i++) {
             uint s = cgem.balanceOfUnderlying(address(this));
             uint b = cgem.borrowBalanceStored(address(this));
-            // todo: break if s,b small
-            // todo: when do these subs fail exactly? can we avoid it?
+            // math overflow if
+            //   - b / (s + L) > cf  [insufficient loan to unwind]
+            //   - minf > 1e18       [bad configuration]
+            //   - minf < u          [can't wind over minf]
             uint x1 = sub(wmul(s, cf), b);
             uint x2 = wdiv(sub(wmul(sub(s, loan_), minf), b),
                            sub(1e18, minf));
             uint max_borrow = min(x1, x2);
-            if (max_borrow > 0) {
-                require(cgem.borrow(max_borrow) == 0);
-                require(cgem.mint(max_borrow) == 0);
-            }
+            if (max_borrow < DUST) break;
+            require(cgem.borrow(max_borrow) == 0);
+            require(cgem.mint(max_borrow) == 0);
         }
         if (borrow_ > 0) {
             require(cgem.borrow(borrow_) == 0);
@@ -257,18 +260,20 @@ contract CompStrat {
         require(cgem.mint(gem.balanceOf(address(this))) == 0);
 
         for (uint i=0; i < loops_; i++) {
-            // todo: how do we know when we have done enough loop to exit?
             uint s = cgem.balanceOfUnderlying(address(this));
             uint b = cgem.borrowBalanceStored(address(this));
+            // math overflow if
+            //   - [insufficient loan to unwind]
+            //   - [insufficient loan for exit]
+            //   - [bad configuration]
             uint x1 = wdiv(sub(wmul(s, cf), b), cf);
             uint x2 = wdiv(sub(add(b, wmul(exit_, maxf)),
                                wmul(sub(s, loan_), maxf)),
                            sub(1e18, maxf));
             uint max_repay = min(x1, x2);
-            if (max_repay > 0) {
-                require(cgem.redeemUnderlying(max_repay) == 0);
-                require(cgem.repayBorrow(max_repay) == 0);
-            }
+            if (max_repay < DUST) break;
+            require(cgem.redeemUnderlying(max_repay) == 0);
+            require(cgem.repayBorrow(max_repay) == 0);
         }
         if (repay_ > 0) {
             require(cgem.redeemUnderlying(repay_) == 0);

@@ -144,7 +144,7 @@ collateral amount.
 
 ### `unwind`
 
-Our utilisation will increase over time due to interest, and if we
+Our utilisation may increase over time due to interest, and if we
 exceed `u > cf` we may be subject to compound liquidation. To lower the
 utlisation we must go through rounds of `redeem` / `repay`, with the
 maximum redeem amount given by
@@ -165,7 +165,7 @@ and
 
 i.e. we must always provide a loan.
 
-When `tf < u < cf`, then `u' < u' and
+When `tf < u < cf`, then `u' < u` and
 
     L / s0 >= (u / cf - 1) / (1 - u)
               + (e / s0) * u / (1 - u)
