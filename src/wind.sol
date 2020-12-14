@@ -69,13 +69,13 @@ interface Strategy {
 }
 
 contract USDCJoin is CropJoin {
-    Strategy public strategy;
+    Strategy public immutable strategy;
     constructor(address vat_, bytes32 ilk_, address gem_, address comp_, address strategy_)
         public
         CropJoin(vat_, ilk_, gem_, comp_)
     {
         strategy = Strategy(strategy_);
-        gem.approve(strategy_, uint(-1));
+        ERC20(gem_).approve(strategy_, uint(-1));
     }
     function nav() public override returns (uint) {
         uint _nav = add(strategy.nav(), gem.balanceOf(address(this)));
@@ -112,16 +112,14 @@ contract USDCJoin is CropJoin {
 }
 
 contract CompStrat {
-    ERC20       public gem;    // collateral token
-    CToken      public cgem;
-    CToken      public comp;
-    Comptroller public comptroller;
+    ERC20       public immutable gem;
+    CToken      public immutable cgem;
+    CToken      public immutable comp;
+    Comptroller public immutable comptroller;
 
-    // todo: cage function (minf=maxf=0)
-    // todo: make configurable
-    uint256 public cf   = 0.75   ether;  // usdc max collateral factor
-    uint256 public maxf = 0.675  ether;  // maximum collateral factor  (90%)
-    uint256 public minf = 0.674  ether;  // minimum collateral factor  (85%)
+    uint256 public cf   = 0;  // ctoken max collateral factor       [wad]
+    uint256 public maxf = 0;  // maximum target collateral factor   [wad]
+    uint256 public minf = 0;  // minimum target collateral factor   [wad]
 
     uint256 constant DUST = 1e6;  // value (in usdc) below which to stop looping
 
@@ -135,12 +133,12 @@ contract CompStrat {
         comp = CToken(comp_);
         comptroller = Comptroller(comptroller_);
 
-        gem.approve(address(cgem), uint(-1));
+        ERC20(gem_).approve(cgem_, uint(-1));
 
         address[] memory ctokens = new address[](1);
-        ctokens[0] = address(cgem);
+        ctokens[0] = cgem_;
         uint256[] memory errors = new uint[](1);
-        errors = comptroller.enterMarkets(ctokens);
+        errors = Comptroller(comptroller_).enterMarkets(ctokens);
         require(errors[0] == 0);
     }
 
@@ -197,9 +195,11 @@ contract CompStrat {
         gem.transfer(msg.sender, val);
     }
 
-    // TODO: `cage`
-    //        - bypass `crop`
-    //        - set target to 0
+    function tune(uint cf_, uint maxf_, uint minf_) external auth {
+        cf   = cf_;
+        maxf = maxf_;
+        minf = minf_;
+    }
 
     // borrow_: how much underlying to borrow (dec decimals)
     // loops_:  how many times to repeat a max borrow loop before the

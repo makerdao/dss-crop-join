@@ -24,10 +24,11 @@ interface VatLike {
 
 // receives tokens and shares them among holders
 contract CropJoin {
-    VatLike     public vat;    // cdp engine
-    bytes32     public ilk;    // collateral type
-    ERC20       public gem;    // collateral token
-    uint256     public dec;    // gem decimals
+    VatLike     public immutable vat;    // cdp engine
+    bytes32     public immutable ilk;    // collateral type
+    ERC20       public immutable gem;    // collateral token
+    uint256     public immutable dec;    // gem decimals
+    ERC20       public immutable bonus;  // rewards token
 
     uint256     public share;  // crops per gem    [ray]
     uint256     public total;  // total gems       [wad]
@@ -36,14 +37,13 @@ contract CropJoin {
     mapping (address => uint) public crops; // crops per user  [wad]
     mapping (address => uint) public stake; // gems per user   [wad]
 
-    ERC20       public bonus;  // rewards token
-
     constructor(address vat_, bytes32 ilk_, address gem_, address bonus_) public {
         vat = VatLike(vat_);
         ilk = ilk_;
         gem = ERC20(gem_);
-        dec = gem.decimals();
-        require(dec <= 18);
+        uint dec_ = ERC20(gem_).decimals();
+        require(dec_ <= 18);
+        dec = dec_;
 
         bonus = ERC20(bonus_);
     }

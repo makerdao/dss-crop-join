@@ -238,6 +238,7 @@ contract SimpleCropTest is CropTestBase {
                               , address(strategy)
                               );
         strategy.rely(address(adapter));
+        strategy.tune(0.75e18, 0.675e18, 0.674e18);
     }
 
     function reward(address usr, uint wad) internal virtual {
@@ -524,6 +525,7 @@ contract CropTest is SimpleCropTest {
                               , address(strategy)
                               );
         strategy.rely(address(adapter));
+        strategy.tune(0.75e18, 0.675e18, 0.674e18);
     }
 
     function reward(address usr, uint wad) internal override {
@@ -560,6 +562,7 @@ contract CompTest is SimpleCropTest {
                               , address(strategy)
                               );
         strategy.rely(address(adapter));
+        strategy.tune(0.75e18, 0.675e18, 0.674e18);
 
         // give ourselves some usdc
         set_usdc(address(this), 1000e6);
@@ -625,6 +628,7 @@ contract RealCompTest is CropTestBase {
                               , address(strategy)
                               );
         strategy.rely(address(adapter));
+        strategy.tune(0.75e18, 0.675e18, 0.674e18);
 
         // give ourselves some usdc
         set_usdc(address(this), 1000e6);
