@@ -203,11 +203,19 @@ contract CropTestBase is TestBase, CanJoin {
     }
 
     function init_user() internal returns (Usr a, Usr b) {
+        return init_user(200 * 1e6);
+    }
+    function init_user(uint cash) internal returns (Usr a, Usr b) {
         a = new Usr(adapter);
         b = new Usr(adapter);
 
-        usdc.transfer(address(a), 200 * 1e6);
-        usdc.transfer(address(b), 200 * 1e6);
+        if (cash * 2 > usdc.balanceOf(self)) {
+            set_usdc(address(a), cash);
+            set_usdc(address(b), cash);
+        } else {
+            usdc.transfer(address(a), cash);
+            usdc.transfer(address(b), cash);
+        }
 
         a.approve(address(usdc), address(adapter));
         b.approve(address(usdc), address(adapter));
@@ -565,7 +573,7 @@ contract CompTest is SimpleCropTest {
         strategy.tune(0.75e18, 0.675e18, 0.674e18);
 
         // give ourselves some usdc
-        set_usdc(address(this), 1000e6);
+        set_usdc(address(this), 1000 * 1e6);
 
         hevm.roll(block.number + 10);
     }
@@ -631,7 +639,7 @@ contract RealCompTest is CropTestBase {
         strategy.tune(0.75e18, 0.675e18, 0.674e18);
 
         // give ourselves some usdc
-        set_usdc(address(this), 1000e6);
+        set_usdc(address(this), 1000 * 1e6);
 
         hevm.roll(block.number + 10);
 
@@ -658,7 +666,7 @@ contract RealCompTest is CropTestBase {
     }
 
     function reward(uint256 tic) internal {
-        log_named_uint("== elapse", tic);
+        log_named_uint("=== tic ==>", tic);
         // accrue ~1 day of rewards
         hevm.warp(block.timestamp + tic);
         // unneeded?
@@ -962,6 +970,78 @@ contract RealCompTest is CropTestBase {
         log_named_uint("nav  ", adapter.nav());
     }
 
+    // simple test of `cage` where we set the target leverage to zero
+    // and then seek to withdraw all of the collateral
+    function test_cage_single_user() public {
+        adapter.join(100 * 1e6);
+        set_cf(0.6745e18);
+
+        // log("unwind 1");
+        // strategy.unwind(0, 6, 0, 0);
+
+        set_cf(0.675e18);
+
+        // this causes a sub overflow unless we use zsub
+        // strategy.tune(0.75e18, 0.673e18, 0);
+
+        strategy.tune(0.75e18, 0, 0);
+
+        assertEq(usdc.balanceOf(address(this)), 0);
+        strategy.unwind(0, 6, 100 * 1e6, 0);
+        assertEq(usdc.balanceOf(address(this)), 100 * 1e6);
+    }
+    // test of `cage` with two users, where the strategy is unwound
+    // by a third party and the two users then exit separately
+    function test_cage_multi_user() public {
+        cage_multi_user(60 * 1e6, 40 * 1e6, 200 * 1e6);
+    }
+    // the same test but fuzzing over various ranges:
+    //   - uint32 is up to $4.5k
+    //   - uint40 is up to $1.1m
+    //   - uint48 is up to $280m, but we cap it at $50m due to liquidity
+    function test_cage_multi_user_small(uint32 a_join, uint32 b_join) public {
+        if (a_join < 100e6 || b_join < 100e6) return;
+        cage_multi_user(a_join, b_join, uint32(-1));
+    }
+    function test_cage_multi_user_medium(uint40 a_join, uint40 b_join) public {
+        if (a_join < uint32(-1) || b_join < uint32(-1)) return;
+        cage_multi_user(a_join, b_join, uint40(-1));
+    }
+    function test_cage_multi_user_large(uint48 a_join, uint48 b_join) public {
+        if (a_join < uint40(-1) || b_join < uint40(-1)) return;
+        if (a_join > 50e6 * 1e6 || b_join > 50e6 * 1e6) return;
+        cage_multi_user(a_join, b_join, uint48(-1));
+    }
+
+    function cage_multi_user(uint a_join, uint b_join, uint cash) public {
+        // this would truncate to whole usdc amounts, but there don't
+        // seem to be any failures for that
+        // a_join = a_join / 1e6 * 1e6;
+        // b_join = b_join / 1e6 * 1e6;
+
+        log_named_decimal_uint("a_join", a_join, 6);
+        log_named_decimal_uint("b_join", b_join, 6);
+        (Usr a, Usr b) = init_user(cash);
+        assertEq(usdc.balanceOf(address(a)), cash);
+        assertEq(usdc.balanceOf(address(b)), cash);
+        a.join(a_join);
+        b.join(b_join);
+
+        assertEq(usdc.balanceOf(address(a)), cash - a_join);
+        assertEq(usdc.balanceOf(address(b)), cash - b_join);
+
+        strategy.wind(0, 6, 0);
+        reward(30 days);
+        strategy.tune(0.75e18, 0, 0);
+
+        strategy.unwind(0, 6, 0, 0);
+
+        a.unwind_exit(a_join);
+        b.unwind_exit(b_join);
+
+        assertEq(usdc.balanceOf(address(a)), cash);
+        assertEq(usdc.balanceOf(address(b)), cash);
+    }
     // wind / unwind make the underlying unavailable as it is deposited
     // into the ctoken. In order to exit we will have to free up some
     // underlying.
@@ -1324,7 +1404,7 @@ contract RealMakerTest is SimpleCropTest {
         adapter = USDCJoin(CHANGELOG.getAddress("MCD_JOIN_USDC_C"));
 
         // give ourselves some usdc
-        set_usdc(address(this), 1000e6);
+        set_usdc(address(this), 1000 * 1e6);
     }
 
     function init() internal {

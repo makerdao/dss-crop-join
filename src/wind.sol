@@ -148,6 +148,9 @@ contract CompStrat {
     function sub(uint x, uint y) public pure returns (uint z) {
         require((z = x - y) <= x, "ds-math-sub-underflow");
     }
+    function zsub(uint x, uint y) public pure returns (uint z) {
+        return sub(x, min(x, y));
+    }
     function mul(uint x, uint y) public pure returns (uint z) {
         require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
     }
@@ -242,7 +245,7 @@ contract CompStrat {
 
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
-        require(u < maxf);
+        require(u < maxf, "bad-wind");
     }
     // repay_: how much underlying to repay (dec decimals)
     // loops_: how many times to repeat a max repay loop before the
@@ -257,7 +260,7 @@ contract CompStrat {
         if (loan_ > 0) {
             require(gem.transferFrom(msg.sender, address(this), loan_));
         }
-        require(cgem.mint(gem.balanceOf(address(this))) == 0);
+        require(cgem.mint(gem.balanceOf(address(this))) == 0, "failed-mint");
 
         for (uint i=0; i < loops_; i++) {
             uint s = cgem.balanceOfUnderlying(address(this));
@@ -267,23 +270,23 @@ contract CompStrat {
             //   - [insufficient loan for exit]
             //   - [bad configuration]
             uint x1 = wdiv(sub(wmul(s, cf), b), cf);
-            uint x2 = wdiv(sub(add(b, wmul(exit_, maxf)),
+            uint x2 = wdiv(this.zsub(add(b, wmul(exit_, maxf)),
                                wmul(sub(s, loan_), maxf)),
                            sub(1e18, maxf));
             uint max_repay = min(x1, x2);
             if (max_repay < DUST) break;
-            require(cgem.redeemUnderlying(max_repay) == 0);
-            require(cgem.repayBorrow(max_repay) == 0);
+            require(cgem.redeemUnderlying(max_repay) == 0, "failed-redeem");
+            require(cgem.repayBorrow(max_repay) == 0, "failed-repay");
         }
         if (repay_ > 0) {
-            require(cgem.redeemUnderlying(repay_) == 0);
-            require(cgem.repayBorrow(repay_) == 0);
+            require(cgem.redeemUnderlying(repay_) == 0, "failed-redeem");
+            require(cgem.repayBorrow(repay_) == 0, "failed-repay");
         }
         if (exit_ > 0 || loan_ > 0) {
-            require(cgem.redeemUnderlying(add(exit_, loan_)) == 0);
+            require(cgem.redeemUnderlying(add(exit_, loan_)) == 0, "failed-redeem");
         }
         if (loan_ > 0) {
-            require(gem.transfer(msg.sender, loan_));
+            require(gem.transfer(msg.sender, loan_), "failed-transfer");
         }
         if (exit_ > 0) {
             exit(exit_);
@@ -291,9 +294,9 @@ contract CompStrat {
 
         uint u_ = wdiv(cgem.borrowBalanceStored(address(this)),
                        cgem.balanceOfUnderlying(address(this)));
-        bool ramping = u  < minf && u_ > u && u_ < maxf;
-        bool damping = u  > maxf && u_ < u && u_ > minf;
-        bool tamping = u_ > minf && u_ < maxf;
-        require(ramping || damping || tamping);
+        bool ramping = u  <  minf && u_ > u && u_ < maxf;
+        bool damping = u  >  maxf && u_ < u && u_ > minf;
+        bool tamping = u_ >= minf && u_ <= maxf;
+        require(ramping || damping || tamping, "bad-unwind");
     }
 }
