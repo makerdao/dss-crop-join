@@ -986,9 +986,9 @@ contract RealCompTest is CropTestBase {
 
         strategy.tune(0.75e18, 0, 0);
 
-        assertEq(usdc.balanceOf(address(this)), 0);
+        assertEq(usdc.balanceOf(address(this)),  900 * 1e6);
         strategy.unwind(0, 6, 100 * 1e6, 0);
-        assertEq(usdc.balanceOf(address(this)), 100 * 1e6);
+        assertEq(usdc.balanceOf(address(this)), 1000 * 1e6);
     }
     // test of `cage` with two users, where the strategy is unwound
     // by a third party and the two users then exit separately
