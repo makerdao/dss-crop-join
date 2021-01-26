@@ -17,7 +17,7 @@ contract SushiJoin is CropJoin {
         CropJoin(vat_, ilk_, gem_, bonus_)
     {
         (address lpToken,,,) = MasterChefLike(masterchef_).poolInfo(pid_);
-        require(lpToken == bonus_, "SushiJoin/pid-does-not-match-bonus");
+        require(lpToken == gem_, "SushiJoin/pid-does-not-match-gem");
 
         masterchef = MasterChefLike(masterchef_);
         pid = pid_;
