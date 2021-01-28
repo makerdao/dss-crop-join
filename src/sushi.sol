@@ -7,6 +7,7 @@ interface MasterChefLike {
     function deposit(uint256 _pid, uint256 _amount) external;
     function withdraw(uint256 _pid, uint256 _amount) external;
     function poolInfo(uint256 _pid) external view returns (address, uint256, uint256, uint256);
+    function sushi() external view returns (address);
 }
 
 contract SushiJoin is CropJoin {
@@ -18,15 +19,16 @@ contract SushiJoin is CropJoin {
     {
         (address lpToken,,,) = MasterChefLike(masterchef_).poolInfo(pid_);
         require(lpToken == gem_, "SushiJoin/pid-does-not-match-gem");
+        require(MasterChefLike(masterchef_).sushi() == bonus_, "SushiJoin/bonus-does-not-match-sushi");
 
         masterchef = MasterChefLike(masterchef_);
         pid = pid_;
+
+        ERC20(gem_).approve(masterchef_, uint(-1));
     }
     function crop() internal override returns (uint256) {
-        // Unforunately there is no getRewards() function so we have to withdraw then deposit
-        // This will leave all the bonus tokens in the join adapter
-        masterchef.withdraw(pid, total);
-        masterchef.deposit(pid, total);
+        // withdraw of 0 will give us only the rewards
+        masterchef.withdraw(pid, 0);
         return super.crop();
     }
     function join(uint256 val) public override {
