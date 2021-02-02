@@ -41,6 +41,9 @@ contract SushiJoin is CropJoin {
         ERC20(gem_).approve(masterchef_, uint(-1));
         wards[msg.sender] = 1;
     }
+    function nav() public override returns (uint256) {
+        return total;
+    }
     function crop() internal override returns (uint256) {
         // withdraw of 0 will give us only the rewards
         masterchef.withdraw(pid, 0);

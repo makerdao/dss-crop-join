@@ -37,17 +37,9 @@ contract MockVat is VatLike {
     function hope(address usr) external {}
 }
 
-contract CanJoin is CanCall {
-    SushiJoin  adapter;
-    function can_exit(uint val) public returns (bool) {
-        bytes memory call = abi.encodeWithSignature
-            ("exit(uint256)", val);
-        return can_call(address(adapter), call);
-    }
-}
-
-contract Usr is CanJoin {
+contract Usr {
     Hevm hevm;
+    SushiJoin adapter;
     SushiLPLike pair;
     ERC20 wbtc;
     ERC20 weth;
@@ -100,7 +92,7 @@ contract Usr is CanJoin {
 }
 
 // Mainnet tests against SushiSwap
-contract SushiTest is TestBase, CanJoin {
+contract SushiTest is TestBase {
 
     SushiLPLike pair;
     ERC20 sushi;
@@ -121,7 +113,6 @@ contract SushiTest is TestBase, CanJoin {
         masterchef = MasterChefLike(0xc2EdaD668740f1aA35E4D8f227fB8E17dcA888Cd);
 
         uint numPools = masterchef.poolLength();
-        log_named_uint("numPools", numPools);
         uint pid = uint(-1);
         for (uint i = 0; i < numPools; i++) {
             (address lpToken,,,) = masterchef.poolInfo(i);
@@ -147,7 +138,93 @@ contract SushiTest is TestBase, CanJoin {
 
     function test_join() public {
         uint256 lpTokens = user1.getLPBalance();
-        user1.approve(address(adapter), uint(-1));
-        adapter.join(lpTokens);
+        user1.approve(address(join), uint(-1));
+
+        assertEq(pair.balanceOf(address(join)), 0);
+        uint256 rewardsBal = pair.balanceOf(address(masterchef));
+
+        user1.join(lpTokens);
+
+        assertEq(pair.balanceOf(address(join)), 0);
+        assertEq(pair.balanceOf(address(masterchef)) - rewardsBal, lpTokens);
+    }
+
+    function test_exit() public {
+        uint256 lpTokens = user1.getLPBalance();
+        user1.approve(address(join), uint(-1));
+
+        uint256 rewardsBal = pair.balanceOf(address(masterchef));
+
+        user1.join(lpTokens);
+        user1.exit(lpTokens);
+
+        assertEq(user1.getLPBalance(), lpTokens);
+        assertEq(pair.balanceOf(address(masterchef)) - rewardsBal, 0);
+    }
+
+    function test_rewards() public {
+        uint256 lpTokens = user1.getLPBalance();
+        user1.approve(address(join), uint(-1));
+        user1.join(lpTokens);
+
+        assertEq(sushi.balanceOf(address(user1)), 0);
+        assertEq(sushi.balanceOf(address(join)), 0);
+
+        hevm.roll(block.number + 100);
+
+        // Trigger a crop into the join adapter
+        user2.exit(0);
+
+        uint256 rewardsSushi = sushi.balanceOf(address(join));
+        uint256 roundingError = 10;
+        assertEq(sushi.balanceOf(address(user1)), 0);
+        assertEq(sushi.balanceOf(address(user2)), 0);
+        assertTrue(rewardsSushi > 0);
+
+        // Exit just the rewards to user1
+        user1.exit(0);
+        assertTrue(sushi.balanceOf(address(user1)) >= rewardsSushi - roundingError);
+        assertEq(sushi.balanceOf(address(user2)), 0);
+        assertTrue(sushi.balanceOf(address(join)) <= roundingError);
+
+        // Pull out the LP tokens
+        user1.exit(lpTokens);
+        assertTrue(sushi.balanceOf(address(user1)) >= rewardsSushi - roundingError);
+        assertEq(user1.getLPBalance(), lpTokens);
+    }
+
+    function test_cage() public {
+        uint256 lpTokens1 = user1.getLPBalance();
+        user1.approve(address(join), uint(-1));
+        user1.join(lpTokens1);
+
+        uint256 lpTokens2 = user2.getLPBalance();
+        user2.approve(address(join), uint(-1));
+        user2.join(lpTokens2);
+
+        hevm.roll(block.number + 100);
+
+        user2.exit(lpTokens2);
+        assertEq(user2.getLPBalance(), lpTokens2);
+
+        hevm.roll(block.number + 200);
+
+        // Emergency situation -- need to cage
+        join.cage();
+
+        assertEq(pair.balanceOf(address(join)), lpTokens1);
+        assertEq(pair.balanceOf(address(join)), join.total());
+
+        user1.flee();
+
+        assertEq(pair.balanceOf(address(join)), 0);
+        assertEq(user1.getLPBalance(), lpTokens1);
+    }
+
+    function testFail_cage_join() public {
+        join.cage();
+        uint256 lpTokens = user1.getLPBalance();
+        user1.approve(address(join), uint(-1));
+        user1.join(lpTokens);
     }
 }
