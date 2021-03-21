@@ -64,6 +64,9 @@ contract Usr {
     function flee() public {
         adapter.flee();
     }
+    function tack(address src, address dst, uint256 wad) public {
+        adapter.tack(src, dst, wad);
+    }
     function set_wbtc(uint val) internal {
         hevm.store(
             address(wbtc),
@@ -225,5 +228,35 @@ contract SushiTest is TestBase {
         uint256 lpTokens = user1.getLPBalance();
         user1.approve(address(join), uint(-1));
         user1.join(lpTokens);
+    }
+
+    function testFail_cant_steal_rewards() public {
+        uint256 lpTokens1 = user1.getLPBalance();
+        user1.approve(address(join), uint(-1));
+        user1.join(lpTokens1);
+
+        hevm.roll(block.number + 100);
+
+        // user2 has no stake and so should not be able to take user1's rewards
+        user2.tack(address(user1), address(user2), lpTokens1);
+    }
+
+    function test_auction_take_rewards() public {
+        uint256 lpTokens1 = user1.getLPBalance();
+        uint256 lpTokens2 = user2.getLPBalance();
+        user1.approve(address(join), uint(-1));
+        user1.join(lpTokens1);
+
+        hevm.roll(block.number + 100);
+
+        // user2 takes user1's gems (via auction or something)
+        vat.flux(ilk, address(user1), address(user2), lpTokens1);
+
+        // user2 should be able to take the rewards as well
+        user2.tack(address(user1), address(user2), lpTokens1);
+        user2.exit(lpTokens1);
+
+        assertEq(user2.getLPBalance(), lpTokens1 + lpTokens2);
+        assertTrue(sushi.balanceOf(address(user2)) > 0);
     }
 }
