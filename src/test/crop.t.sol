@@ -12,14 +12,14 @@ contract MockVat is VatLike {
     }
     function add(uint x, int y) internal pure returns (uint z) {
         z = x + uint(y);
-        require(y >= 0 || z <= x);
-        require(y <= 0 || z >= x);
+        require(y >= 0 || z <= x, "vat/add-fail");
+        require(y <= 0 || z >= x, "vat/add-fail");
     }
     function add(uint x, uint y) internal pure returns (uint z) {
-        require((z = x + y) >= x);
+        require((z = x + y) >= x, "vat/add-fail");
     }
     function sub(uint x, uint y) internal pure returns (uint z) {
-        require((z = x - y) <= x);
+        require((z = x - y) <= x, "vat/sub-fail");
     }
     function slip(bytes32 ilk, address usr, int256 wad) external override {
         gem[ilk][usr] = add(gem[ilk][usr], wad);
@@ -28,6 +28,7 @@ contract MockVat is VatLike {
         gem[ilk][src] = sub(gem[ilk][src], wad);
         gem[ilk][dst] = add(gem[ilk][dst], wad);
     }
+    function hope(address usr) external {}
 }
 
 contract Token {
@@ -122,7 +123,8 @@ contract ComptrollerStorage {
 }
 
 contract CanJoin is CanCall {
-    USDCJoin adapter;
+    USDCJoin  adapter;
+    CompStrat strategy;
     function can_exit(uint val) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
             ("exit(uint256)", val);
@@ -131,7 +133,7 @@ contract CanJoin is CanCall {
     function can_wind(uint borrow, uint n, uint loan) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
             ("wind(uint256,uint256,uint256)", borrow, n, loan);
-        return can_call(address(adapter), call);
+        return can_call(address(strategy), call);
     }
     function can_unwind(uint repay, uint n, uint exit_, uint loan_) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
@@ -152,6 +154,7 @@ contract CanJoin is CanCall {
 contract Usr is CanJoin {
     constructor(USDCJoin join_) public {
         adapter = join_;
+        strategy = CompStrat(address(adapter.strategy()));
     }
     function approve(address coin, address usr) public {
         Token(coin).approve(usr, uint(-1));
@@ -174,19 +177,22 @@ contract Usr is CanJoin {
     function liquidateBorrow(address borrower, uint repayAmount) external
         returns (uint)
     {
-        CToken ctoken = CToken(adapter.cgem());
+        CToken ctoken = CToken(strategy.cgem());
         return ctoken.liquidateBorrow(borrower, repayAmount, ctoken);
+    }
+    function hope(address vat, address usr) public {
+        MockVat(vat).hope(usr);
     }
 }
 
 contract CropTestBase is TestBase, CanJoin {
-    Token    usdc;
-    cToken   cusdc;
-    Token    comp;
-    Troll    troll;
-    MockVat  vat;
-    address  self;
-    bytes32  ilk = "usdc-c";
+    Token     usdc;
+    cToken    cusdc;
+    Token     comp;
+    Troll     troll;
+    MockVat   vat;
+    address   self;
+    bytes32   ilk = "USDC-C";
 
     function set_usdc(address usr, uint val) internal {
         hevm.store(
@@ -197,14 +203,24 @@ contract CropTestBase is TestBase, CanJoin {
     }
 
     function init_user() internal returns (Usr a, Usr b) {
+        return init_user(200 * 1e6);
+    }
+    function init_user(uint cash) internal returns (Usr a, Usr b) {
         a = new Usr(adapter);
         b = new Usr(adapter);
 
-        usdc.transfer(address(a), 200 * 1e6);
-        usdc.transfer(address(b), 200 * 1e6);
+        if (cash * 2 > usdc.balanceOf(self)) {
+            set_usdc(address(a), cash);
+            set_usdc(address(b), cash);
+        } else {
+            usdc.transfer(address(a), cash);
+            usdc.transfer(address(b), cash);
+        }
 
         a.approve(address(usdc), address(adapter));
         b.approve(address(usdc), address(adapter));
+
+        a.hope(address(vat), address(this));
     }
 }
 
@@ -218,13 +234,19 @@ contract SimpleCropTest is CropTestBase {
         comp  = new Token(18, 0);
         troll = new Troll(address(comp));
         vat   = new MockVat();
+        strategy = new CompStrat( address(usdc)
+                                , address(cusdc)
+                                , address(comp)
+                                , address(troll)
+                                );
         adapter = new USDCJoin( address(vat)
                               , ilk
                               , address(usdc)
-                              , address(cusdc)
                               , address(comp)
-                              , address(troll)
+                              , address(strategy)
                               );
+        strategy.rely(address(adapter));
+        strategy.tune(0.75e18, 0.675e18, 0.674e18);
     }
 
     function reward(address usr, uint wad) internal virtual {
@@ -242,7 +264,7 @@ contract SimpleCropTest is CropTestBase {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
@@ -258,7 +280,7 @@ contract SimpleCropTest is CropTestBase {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
@@ -278,7 +300,7 @@ contract SimpleCropTest is CropTestBase {
         adapter.join(100 * 1e6);
         assertEq(comp.balanceOf(self), 0 * 1e18, "no initial rewards");
 
-        reward(address(adapter), 10 * 1e18);
+        reward(address(strategy), 10 * 1e18);
         adapter.join(0); adapter.join(0);  // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
@@ -291,7 +313,7 @@ contract SimpleCropTest is CropTestBase {
         adapter.join(50 * 1e6);
 
         assertEq(comp.balanceOf(self), 10 * 1e18);
-        reward(address(adapter), 10 * 1e18);
+        reward(address(strategy), 10 * 1e18);
         adapter.join(10 * 1e6);
         assertEq(comp.balanceOf(self), 20 * 1e18);
     }
@@ -301,7 +323,7 @@ contract SimpleCropTest is CropTestBase {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0);
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
@@ -315,13 +337,13 @@ contract SimpleCropTest is CropTestBase {
         assertEq(comp.balanceOf(address(a)), 30 * 1e18);
         assertEq(comp.balanceOf(address(b)), 20 * 1e18);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
         a.join(20 * 1e6);
         a.join(0); b.reap();
         assertEq(comp.balanceOf(address(a)), 60 * 1e18);
         assertEq(comp.balanceOf(address(b)), 40 * 1e18);
 
-        reward(address(adapter), 30 * 1e18);
+        reward(address(strategy), 30 * 1e18);
         a.join(0); b.reap();
         assertEq(comp.balanceOf(address(a)), 80 * 1e18);
         assertEq(comp.balanceOf(address(b)), 50 * 1e18);
@@ -335,12 +357,12 @@ contract SimpleCropTest is CropTestBase {
         (Usr a, Usr b) = init_user();
 
         a.join(100 * 1e6);
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0); a.join(0); // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
         vat.flux(ilk, address(a), address(b), 50 * 1e18);
         b.join(0);
         assertEq(comp.balanceOf(address(b)),  0 * 1e18, "if nonzero we have a problem");
@@ -351,12 +373,12 @@ contract SimpleCropTest is CropTestBase {
         (Usr a, Usr b) = init_user();
 
         a.join(100 * 1e6);
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0); a.join(0); // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
         vat.flux(ilk, address(a), address(b), 50 * 1e18);
 
         assertEq(usdc.balanceOf(address(a)), 100e6,  "a balance before exit");
@@ -376,14 +398,14 @@ contract SimpleCropTest is CropTestBase {
         (Usr a, Usr b) = init_user();
 
         a.join(100 * 1e6);
-        reward(address(adapter), 50 * 1e18);
+        reward(address(strategy), 50 * 1e18);
 
         a.join(0); a.join(0); // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
         assertTrue( a.can_exit( 50e6), "can exit before flux");
         vat.flux(ilk, address(a), address(b), 100e18);
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
 
         // if x gems are transferred from a to b, a will continue to earn
         // rewards on x, while b will not earn anything on x, until we
@@ -394,7 +416,7 @@ contract SimpleCropTest is CropTestBase {
 
         assertEq(comp.balanceOf(address(a)), 100e18, "can claim remaining rewards");
 
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
         a.exit(0);
 
         assertEq(comp.balanceOf(address(a)), 150e18, "rewards continue to accrue");
@@ -402,7 +424,7 @@ contract SimpleCropTest is CropTestBase {
         assertEq(adapter.stake(address(a)),     100e18, "balance is unchanged");
 
         adapter.tack(address(a), address(b),    100e18);
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
         a.exit(0);
 
         assertEq(comp.balanceOf(address(a)), 150e18, "rewards no longer increase");
@@ -421,15 +443,15 @@ contract SimpleCropTest is CropTestBase {
         adapter.join(100 * 1e6);
         assertEq(comp.balanceOf(self), 0 * 1e18, "no initial rewards");
 
-        reward(address(adapter), 10 * 1e18);
+        reward(address(strategy), 10 * 1e18);
         adapter.join(0); adapter.join(0);  // have to do it twice for some comptroller reason
         assertEq(comp.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
-        reward(address(adapter), 10 * 1e18);
+        reward(address(strategy), 10 * 1e18);
         adapter.exit(50 * 1e6);
         assertEq(comp.balanceOf(self), 20 * 1e18, "rewards increase with exit");
 
-        reward(address(adapter), 10 * 1e18);
+        reward(address(strategy), 10 * 1e18);
         assertEq(usdc.balanceOf(self),  950e6, "balance before flee");
         adapter.flee();
         assertEq(comp.balanceOf(self), 20 * 1e18, "rewards invariant over flee");
@@ -460,14 +482,14 @@ contract SimpleCropTest is CropTestBase {
 
         // concurrent reap
         a.join(100e6);
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
 
         a.join(0);
         vat.flux(ilk, address(a), address(b), 100e18);
         adapter.tack(address(a), address(b), 100e18);
         b.join(0);
 
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
         a.exit(0);
         b.exit(100e6);
         assertEq(comp.balanceOf(address(a)), 50e18, "a rewards");
@@ -475,14 +497,14 @@ contract SimpleCropTest is CropTestBase {
 
         // crop transfer
         a.join(100e6);
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
 
         // a doesn't reap their rewards before flux so all their pending
         // rewards go to b
         vat.flux(ilk, address(a), address(b), 100e18);
         adapter.tack(address(a), address(b), 100e18);
 
-        reward(address(adapter), 50e18);
+        reward(address(strategy), 50e18);
         a.exit(0);
         b.exit(100e6);
         assertEq(comp.balanceOf(address(a)),  50e18, "a rewards alt");
@@ -499,13 +521,19 @@ contract CropTest is SimpleCropTest {
         comp  = new Token(18, 0);
         troll = new Troll(address(comp));
         vat   = new MockVat();
+        strategy = new CompStrat( address(usdc)
+                                , address(cusdc)
+                                , address(comp)
+                                , address(troll)
+                                );
         adapter = new USDCJoin( address(vat)
                               , ilk
                               , address(usdc)
-                              , address(cusdc)
                               , address(comp)
-                              , address(troll)
+                              , address(strategy)
                               );
+        strategy.rely(address(adapter));
+        strategy.tune(0.75e18, 0.675e18, 0.674e18);
     }
 
     function reward(address usr, uint wad) internal override {
@@ -530,16 +558,22 @@ contract CompTest is SimpleCropTest {
         comp  =  Token(0xc00e94Cb662C3520282E6f5717214004A7f26888);
         troll =  Troll(0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B);
 
+        strategy = new CompStrat( address(usdc)
+                                , address(cusdc)
+                                , address(comp)
+                                , address(troll)
+                                );
         adapter = new USDCJoin( address(vat)
                               , ilk
                               , address(usdc)
-                              , address(cusdc)
                               , address(comp)
-                              , address(troll)
+                              , address(strategy)
                               );
+        strategy.rely(address(adapter));
+        strategy.tune(0.75e18, 0.675e18, 0.674e18);
 
         // give ourselves some usdc
-        set_usdc(address(this), 1000e6);
+        set_usdc(address(this), 1000 * 1e6);
 
         hevm.roll(block.number + 10);
     }
@@ -590,34 +624,41 @@ contract RealCompTest is CropTestBase {
         comp  =  Token(0xc00e94Cb662C3520282E6f5717214004A7f26888);
         troll =  Troll(0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B);
 
+        strategy = new CompStrat( address(usdc)
+                                , address(cusdc)
+                                , address(comp)
+                                , address(troll)
+                                );
         adapter = new USDCJoin( address(vat)
                               , ilk
                               , address(usdc)
-                              , address(cusdc)
                               , address(comp)
-                              , address(troll)
+                              , address(strategy)
                               );
+        strategy.rely(address(adapter));
+        strategy.tune(0.75e18, 0.675e18, 0.674e18);
 
         // give ourselves some usdc
-        set_usdc(address(this), 1000e6);
+        set_usdc(address(this), 1000 * 1e6);
 
         hevm.roll(block.number + 10);
 
         usdc.approve(address(adapter), uint(-1));
+        usdc.approve(address(strategy), uint(-1));
     }
 
     function get_s() internal returns (uint256 cf) {
         require(cToken(address(cusdc)).accrueInterest() == 0);
-        return cToken(address(cusdc)).balanceOfUnderlying(address(adapter));
+        return cToken(address(cusdc)).balanceOfUnderlying(address(strategy));
     }
     function get_b() internal returns (uint256 cf) {
         require(cToken(address(cusdc)).accrueInterest() == 0);
-        return cToken(address(cusdc)).borrowBalanceStored(address(adapter));
+        return cToken(address(cusdc)).borrowBalanceStored(address(strategy));
     }
     function get_cf() internal returns (uint256 cf) {
         require(cToken(address(cusdc)).accrueInterest() == 0);
-        cf = wdiv(cToken(address(cusdc)).borrowBalanceStored(address(adapter)),
-                  cToken(address(cusdc)).balanceOfUnderlying(address(adapter)));
+        cf = wdiv(cToken(address(cusdc)).borrowBalanceStored(address(strategy)),
+                  cToken(address(cusdc)).balanceOfUnderlying(address(strategy)));
     }
 
     function test_underlying() public {
@@ -625,7 +666,7 @@ contract RealCompTest is CropTestBase {
     }
 
     function reward(uint256 tic) internal {
-        log_named_uint("== elapse", tic);
+        log_named_uint("=== tic ==>", tic);
         // accrue ~1 day of rewards
         hevm.warp(block.timestamp + tic);
         // unneeded?
@@ -639,7 +680,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        adapter.wind(0, 0, 0);
+        strategy.wind(0, 0, 0);
 
         reward(1 days);
 
@@ -656,7 +697,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        adapter.wind(50 * 10**6, 0, 0);
+        strategy.wind(50 * 10**6, 0, 0);
 
         reward(1 days);
 
@@ -665,8 +706,8 @@ contract RealCompTest is CropTestBase {
         assertGt(comp.balanceOf(address(a)), 0.00008 ether);
         assertLt(comp.balanceOf(address(a)), 0.00011 ether);
 
-        assertLt(get_cf(), adapter.maxf());
-        assertLt(get_cf(), adapter.minf());
+        assertLt(get_cf(), strategy.maxf());
+        assertLt(get_cf(), strategy.minf());
     }
 
     function test_reward_wound_fully() public {
@@ -676,7 +717,7 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        adapter.wind(0, 5, 0);
+        strategy.wind(0, 5, 0);
 
         reward(1 days);
 
@@ -685,8 +726,8 @@ contract RealCompTest is CropTestBase {
         assertGt(comp.balanceOf(address(a)), 0.00015 ether);
         assertLt(comp.balanceOf(address(a)), 0.00035 ether);
 
-        assertLt(get_cf(), adapter.maxf(), "cf < maxf");
-        assertGt(get_cf(), adapter.minf(), "cf > minf");
+        assertLt(get_cf(), strategy.maxf(), "cf < maxf");
+        assertGt(get_cf(), strategy.minf(), "cf > minf");
     }
 
     function test_wind_unwind() public {
@@ -697,24 +738,24 @@ contract RealCompTest is CropTestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        adapter.wind(0, 5, 0);
+        strategy.wind(0, 5, 0);
 
         reward(1 days);
 
-        assertLt(get_cf(), adapter.maxf(), "under target");
-        assertGt(get_cf(), adapter.minf(), "over minimum");
+        assertLt(get_cf(), strategy.maxf(), "under target");
+        assertGt(get_cf(), strategy.minf(), "over minimum");
 
         log_named_uint("cf", get_cf());
         reward(1000 days);
         log_named_uint("cf", get_cf());
 
-        assertGt(get_cf(), adapter.maxf(), "over target after interest");
+        assertGt(get_cf(), strategy.maxf(), "over target after interest");
 
         // unwind is used for deleveraging our position. Here we have
         // gone over the target due to accumulated interest, so we
         // unwind to bring us back under the target leverage.
         assertTrue( can_unwind(0, 1), "able to unwind if over target");
-        adapter.unwind(0, 1, 0, 0);
+        strategy.unwind(0, 1, 0, 0);
 
         assertLt(get_cf(), 0.676e18, "near target post unwind");
         assertGt(get_cf(), 0.674e18, "over minimum post unwind");
@@ -724,19 +765,19 @@ contract RealCompTest is CropTestBase {
         adapter.join(100e6);
 
         set_cf(0.72e18);
-        adapter.unwind(0, 1, 0, 0);
+        strategy.unwind(0, 1, 0, 0);
         log_named_uint("cf", get_cf());
-        adapter.unwind(0, 1, 0, 0);
+        strategy.unwind(0, 1, 0, 0);
         log_named_uint("cf", get_cf());
-        adapter.unwind(0, 1, 0, 0);
+        strategy.unwind(0, 1, 0, 0);
         log_named_uint("cf", get_cf());
-        adapter.unwind(0, 1, 0, 0);
+        strategy.unwind(0, 1, 0, 0);
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.674e18);
         assertLt(get_cf(), 0.675e18);
 
         set_cf(0.72e18);
-        adapter.unwind(0, 8, 0, 0);
+        strategy.unwind(0, 8, 0, 0);
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.674e18);
         assertLt(get_cf(), 0.675e18);
@@ -758,9 +799,9 @@ contract RealCompTest is CropTestBase {
         log_named_uint("b", get_s());
         log_named_uint("L", Lmin);
 
-        assertTrue(!can_unwind(0, 1, 0, 0));
-        assertTrue(!can_unwind(0, 1, 0, Lmin - 1e2));
-        assertTrue( can_unwind(0, 1, 0, Lmin));
+        assertTrue(!can_unwind(0, 1, 0, 0), "can't unwind without a loan");
+        assertTrue(!can_unwind(0, 1, 0, Lmin - 1e2), "can't unwind without enough loan");
+        assertTrue( can_unwind(0, 1, 0, Lmin), "can unwind with sufficient loan");
     }
 
     function test_unwind_under_limit() public {
@@ -797,7 +838,7 @@ contract RealCompTest is CropTestBase {
         assertTrue(!can_wind(207.69 * 1e6, 0, 176 * 1e6), "insufficient loan");
         assertTrue( can_wind(207.69 * 1e6, 0, 177 * 1e6), "sufficient loan");
 
-        adapter.wind(207.69 * 1e6, 0, 177 * 1e6);
+        strategy.wind(207.69 * 1e6, 0, 177 * 1e6);
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.674e18);
         assertLt(get_cf(), 0.675e18);
@@ -809,34 +850,35 @@ contract RealCompTest is CropTestBase {
         set_usdc(address(a), 900e6);
 
         a.join(100 * 1e6);
-        adapter.wind(0, 1, 200 * 1e6);
+        strategy.wind(0, 1, 200 * 1e6);
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.673e18);
         assertLt(get_cf(), 0.675e18);
 
+        return;
         a.join(100 * 1e6);
         logs("200");
-        adapter.wind(0, 1, 200 * 1e6);
+        strategy.wind(0, 1, 200 * 1e6);
         log_named_uint("cf", get_cf());
 
         a.join(100 * 1e6);
         logs("100");
-        adapter.wind(0, 1, 100 * 1e6);
+        strategy.wind(0, 1, 100 * 1e6);
         log_named_uint("cf", get_cf());
 
         a.join(100 * 1e6);
         logs("100");
-        adapter.wind(0, 1, 100 * 1e6);
+        strategy.wind(0, 1, 100 * 1e6);
         log_named_uint("cf", get_cf());
 
         a.join(100 * 1e6);
         logs("150");
-        adapter.wind(0, 1, 150 * 1e6);
+        strategy.wind(0, 1, 150 * 1e6);
         log_named_uint("cf", get_cf());
 
         a.join(100 * 1e6);
         logs("175");
-        adapter.wind(0, 1, 175 * 1e6);
+        strategy.wind(0, 1, 175 * 1e6);
         log_named_uint("cf", get_cf());
 
         assertGt(get_cf(), 0.673e18);
@@ -848,7 +890,7 @@ contract RealCompTest is CropTestBase {
 
         a.join(100 * 1e6);
         uint gas_before = gasleft();
-        adapter.wind(0, 1, 200 * 1e6);
+        strategy.wind(0, 1, 200 * 1e6);
         uint gas_after = gasleft();
         log_named_uint("s ", get_s());
         log_named_uint("b ", get_b());
@@ -863,7 +905,7 @@ contract RealCompTest is CropTestBase {
 
         a.join(100 * 1e6);
         uint gas_before = gasleft();
-        adapter.wind(0, 5, 0);
+        strategy.wind(0, 5, 0);
         uint gas_after = gasleft();
 
         assertGt(get_cf(), 0.673e18);
@@ -879,7 +921,7 @@ contract RealCompTest is CropTestBase {
 
         a.join(100 * 1e6);
         uint gas_before = gasleft();
-        adapter.wind(0, 3, 50e6);
+        strategy.wind(0, 3, 50e6);
         uint gas_after = gasleft();
 
         assertGt(get_cf(), 0.673e18);
@@ -904,23 +946,23 @@ contract RealCompTest is CropTestBase {
         log_named_uint("new b", b);
         log_named_uint("set u", cf);
 
-        set_usdc(address(adapter), 0);
+        set_usdc(address(strategy), 0);
         // cusdc.accountTokens
         hevm.store(
             address(cusdc),
-            keccak256(abi.encode(address(adapter), uint256(15))),
+            keccak256(abi.encode(address(strategy), uint256(15))),
             bytes32((s * 1e18) / x)
         );
         // cusdc.accountBorrows.principal
         hevm.store(
             address(cusdc),
-            keccak256(abi.encode(address(adapter), uint256(17))),
+            keccak256(abi.encode(address(strategy), uint256(17))),
             bytes32(b)
         );
         // cusdc.accountBorrows.interestIndex
         hevm.store(
             address(cusdc),
-            bytes32(uint(keccak256(abi.encode(address(adapter), uint256(17)))) + 1),
+            bytes32(uint(keccak256(abi.encode(address(strategy), uint256(17)))) + 1),
             bytes32(cusdc.borrowIndex())
         );
 
@@ -928,6 +970,78 @@ contract RealCompTest is CropTestBase {
         log_named_uint("nav  ", adapter.nav());
     }
 
+    // simple test of `cage` where we set the target leverage to zero
+    // and then seek to withdraw all of the collateral
+    function test_cage_single_user() public {
+        adapter.join(100 * 1e6);
+        set_cf(0.6745e18);
+
+        // log("unwind 1");
+        // strategy.unwind(0, 6, 0, 0);
+
+        set_cf(0.675e18);
+
+        // this causes a sub overflow unless we use zsub
+        // strategy.tune(0.75e18, 0.673e18, 0);
+
+        strategy.tune(0.75e18, 0, 0);
+
+        assertEq(usdc.balanceOf(address(this)),  900 * 1e6);
+        strategy.unwind(0, 6, 100 * 1e6, 0);
+        assertEq(usdc.balanceOf(address(this)), 1000 * 1e6);
+    }
+    // test of `cage` with two users, where the strategy is unwound
+    // by a third party and the two users then exit separately
+    function test_cage_multi_user() public {
+        cage_multi_user(60 * 1e6, 40 * 1e6, 200 * 1e6);
+    }
+    // the same test but fuzzing over various ranges:
+    //   - uint32 is up to $4.5k
+    //   - uint40 is up to $1.1m
+    //   - uint48 is up to $280m, but we cap it at $50m due to liquidity
+    function test_cage_multi_user_small(uint32 a_join, uint32 b_join) public {
+        if (a_join < 100e6 || b_join < 100e6) return;
+        cage_multi_user(a_join, b_join, uint32(-1));
+    }
+    function test_cage_multi_user_medium(uint40 a_join, uint40 b_join) public {
+        if (a_join < uint32(-1) || b_join < uint32(-1)) return;
+        cage_multi_user(a_join, b_join, uint40(-1));
+    }
+    function test_cage_multi_user_large(uint48 a_join, uint48 b_join) public {
+        if (a_join < uint40(-1) || b_join < uint40(-1)) return;
+        if (a_join > 50e6 * 1e6 || b_join > 50e6 * 1e6) return;
+        cage_multi_user(a_join, b_join, uint48(-1));
+    }
+
+    function cage_multi_user(uint a_join, uint b_join, uint cash) public {
+        // this would truncate to whole usdc amounts, but there don't
+        // seem to be any failures for that
+        // a_join = a_join / 1e6 * 1e6;
+        // b_join = b_join / 1e6 * 1e6;
+
+        log_named_decimal_uint("a_join", a_join, 6);
+        log_named_decimal_uint("b_join", b_join, 6);
+        (Usr a, Usr b) = init_user(cash);
+        assertEq(usdc.balanceOf(address(a)), cash);
+        assertEq(usdc.balanceOf(address(b)), cash);
+        a.join(a_join);
+        b.join(b_join);
+
+        assertEq(usdc.balanceOf(address(a)), cash - a_join);
+        assertEq(usdc.balanceOf(address(b)), cash - b_join);
+
+        strategy.wind(0, 6, 0);
+        reward(30 days);
+        strategy.tune(0.75e18, 0, 0);
+
+        strategy.unwind(0, 6, 0, 0);
+
+        a.unwind_exit(a_join);
+        b.unwind_exit(b_join);
+
+        assertEq(usdc.balanceOf(address(a)), cash);
+        assertEq(usdc.balanceOf(address(b)), cash);
+    }
     // wind / unwind make the underlying unavailable as it is deposited
     // into the ctoken. In order to exit we will have to free up some
     // underlying.
@@ -938,8 +1052,8 @@ contract RealCompTest is CropTestBase {
 
         set_cf(0.675e18);
 
-        assertTrue(get_cf() < adapter.maxf(), "cf under target");
-        assertTrue(get_cf() > adapter.minf(), "cf over minimum");
+        assertTrue(get_cf() < strategy.maxf(), "cf under target");
+        assertTrue(get_cf() > strategy.minf(), "cf over minimum");
 
         // we can't exit as there is no available usdc
         assertTrue(!can_exit(10 * 1e6), "cannot 10% exit initially");
@@ -953,29 +1067,29 @@ contract RealCompTest is CropTestBase {
             assertTrue( can_unwind_exit(19.5 * 1e6, 10 * 1e6), "ok loan exit");
             assertTrue(!can_unwind_exit(19.7 * 1e6, 10 * 1e6), "no loan exit");
 
-            log_named_uint("s ", CToken(address(cusdc)).balanceOfUnderlying(address(adapter)));
-            log_named_uint("b ", CToken(address(cusdc)).borrowBalanceStored(address(adapter)));
+            log_named_uint("s ", CToken(address(cusdc)).balanceOfUnderlying(address(strategy)));
+            log_named_uint("b ", CToken(address(cusdc)).borrowBalanceStored(address(strategy)));
             log_named_uint("u ", get_cf());
 
             uint prev = usdc.balanceOf(address(this));
             adapter.unwind(0, 1, 10 * 1e6,  10 * 1e6);
             assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
 
-            log_named_uint("s'", CToken(address(cusdc)).balanceOfUnderlying(address(adapter)));
-            log_named_uint("b'", CToken(address(cusdc)).borrowBalanceStored(address(adapter)));
+            log_named_uint("s'", CToken(address(cusdc)).balanceOfUnderlying(address(strategy)));
+            log_named_uint("b'", CToken(address(cusdc)).borrowBalanceStored(address(strategy)));
             log_named_uint("u'", get_cf());
 
         } else {
-            log_named_uint("s ", CToken(address(cusdc)).balanceOfUnderlying(address(adapter)));
-            log_named_uint("b ", CToken(address(cusdc)).borrowBalanceStored(address(adapter)));
+            log_named_uint("s ", CToken(address(cusdc)).balanceOfUnderlying(address(strategy)));
+            log_named_uint("b ", CToken(address(cusdc)).borrowBalanceStored(address(strategy)));
             log_named_uint("u ", get_cf());
 
             uint prev = usdc.balanceOf(address(this));
             adapter.unwind(0, 1, 10 * 1e6, 0);
             assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
 
-            log_named_uint("s'", CToken(address(cusdc)).balanceOfUnderlying(address(adapter)));
-            log_named_uint("b'", CToken(address(cusdc)).borrowBalanceStored(address(adapter)));
+            log_named_uint("s'", CToken(address(cusdc)).balanceOfUnderlying(address(strategy)));
+            log_named_uint("b'", CToken(address(cusdc)).borrowBalanceStored(address(strategy)));
             log_named_uint("u'", get_cf());
         }
     }
@@ -1002,7 +1116,7 @@ contract RealCompTest is CropTestBase {
         adapter.join(100 * 1e6);
         set_cf(0.675e18);
         uint gas_before = gasleft();
-        adapter.unwind(0, 1, 100e6 - 1e4, 177e6);
+        strategy.unwind(0, 1, 100e6 - 1e4, 177e6);
         uint gas_after = gasleft();
 
         assertGt(get_cf(), 0.674e18);
@@ -1017,7 +1131,7 @@ contract RealCompTest is CropTestBase {
         adapter.join(100 * 1e6);
         set_cf(0.675e18);
         uint gas_before = gasleft();
-        adapter.unwind(0, 5, 100e6 - 1e4, 0);
+        strategy.unwind(0, 5, 100e6 - 1e4, 0);
         uint gas_after = gasleft();
 
         assertGt(get_cf(), 0.674e18);
@@ -1034,7 +1148,7 @@ contract RealCompTest is CropTestBase {
         adapter.join(100 * 1e6);
         set_cf(0.675e18);
         uint gas_before = gasleft();
-        adapter.unwind(0, 1, 14e6, 0);
+        strategy.unwind(0, 1, 14e6, 0);
         uint gas_after = gasleft();
 
         assertGt(get_cf(), 0.674e18);
@@ -1060,7 +1174,7 @@ contract RealCompTest is CropTestBase {
         assertEq(adapter.nps(), 1 ether, "initial nps is 1");
 
         log_named_uint("nps before wind   ", adapter.nps());
-        adapter.wind(0, 5, 0);
+        strategy.wind(0, 5, 0);
 
         assertGt(get_cf(), 0.673e18, "near minimum");
         assertLt(get_cf(), 0.675e18, "under target");
@@ -1078,7 +1192,7 @@ contract RealCompTest is CropTestBase {
         log_named_uint("max usdc    ", max_usdc);
         log_named_uint("adapter.balance", adapter.stake(address(a)));
         log_named_uint("vat.gem     ", vat.gem(adapter.ilk(), address(a)));
-        log_named_uint("usdc        ", usdc.balanceOf(address(adapter)));
+        log_named_uint("usdc        ", usdc.balanceOf(address(strategy)));
         log_named_uint("cf", get_cf());
         logs("exit ===");
         a.unwind_exit(max_usdc);
@@ -1086,7 +1200,7 @@ contract RealCompTest is CropTestBase {
         log_named_uint("adapter.balance", adapter.stake(address(a)));
         log_named_uint("adapter.balance", adapter.stake(address(a)) / 1e12);
         log_named_uint("vat.gem     ", vat.gem(adapter.ilk(), address(a)));
-        log_named_uint("usdc        ", usdc.balanceOf(address(adapter)));
+        log_named_uint("usdc        ", usdc.balanceOf(address(strategy)));
         log_named_uint("cf", get_cf());
         assertLt(usdc.balanceOf(address(a)), 200 * 1e6, "less usdc after");
         assertGt(usdc.balanceOf(address(a)), 199 * 1e6, "less usdc after");
@@ -1106,16 +1220,16 @@ contract RealCompTest is CropTestBase {
         assertEq(usdc.balanceOf(address(a)), 100 * 1e6);
 
         logs("wind===");
-        adapter.wind(0, 5, 0);
+        strategy.wind(0, 5, 0);
 
         assertGt(get_cf(), 0.673e18, "near minimum");
         assertLt(get_cf(), 0.675e18, "under target");
 
         uint liquidity; uint shortfall; uint supp; uint borr;
-        supp = CToken(address(cusdc)).balanceOfUnderlying(address(adapter));
-        borr = CToken(address(cusdc)).borrowBalanceStored(address(adapter));
+        supp = CToken(address(cusdc)).balanceOfUnderlying(address(strategy));
+        borr = CToken(address(cusdc)).borrowBalanceStored(address(strategy));
         (, liquidity, shortfall) =
-            troll.getAccountLiquidity(address(adapter));
+            troll.getAccountLiquidity(address(strategy));
         log_named_uint("cf  ", get_cf());
         log_named_uint("s  ", supp);
         log_named_uint("b  ", borr);
@@ -1127,10 +1241,10 @@ contract RealCompTest is CropTestBase {
         reward(5000 days);
         assertLt(adapter.nps(), nps_before, "nps falls after interest");
 
-        supp = CToken(address(cusdc)).balanceOfUnderlying(address(adapter));
-        borr = CToken(address(cusdc)).borrowBalanceStored(address(adapter));
+        supp = CToken(address(cusdc)).balanceOfUnderlying(address(strategy));
+        borr = CToken(address(cusdc)).borrowBalanceStored(address(strategy));
         (, liquidity, shortfall) =
-            troll.getAccountLiquidity(address(adapter));
+            troll.getAccountLiquidity(address(strategy));
         log_named_uint("cf' ", get_cf());
         log_named_uint("s' ", supp);
         log_named_uint("b' ", borr);
@@ -1155,14 +1269,14 @@ contract RealCompTest is CropTestBase {
         assertTrue(!can_call( address(cusdc)
                             , abi.encodeWithSignature(
                                 "liquidateBorrow(address,uint256,address)",
-                                address(adapter), repay, CToken(address(cusdc)))),
+                                address(strategy), repay, CToken(address(cusdc)))),
                   "can't perform liquidation");
-        cusdc.liquidateBorrow(address(adapter), repay, CToken(address(cusdc)));
+        cusdc.liquidateBorrow(address(strategy), repay, CToken(address(cusdc)));
 
-        supp = CToken(address(cusdc)).balanceOfUnderlying(address(adapter));
-        borr = CToken(address(cusdc)).borrowBalanceStored(address(adapter));
+        supp = CToken(address(cusdc)).balanceOfUnderlying(address(strategy));
+        borr = CToken(address(cusdc)).borrowBalanceStored(address(strategy));
         (, liquidity, shortfall) =
-            troll.getAccountLiquidity(address(adapter));
+            troll.getAccountLiquidity(address(strategy));
         log_named_uint("cf' ", get_cf());
         log_named_uint("s' ", supp);
         log_named_uint("b' ", borr);
@@ -1205,17 +1319,17 @@ contract RealCompTest is CropTestBase {
         enable_seize(address(this));
 
         adapter.join(100 * 1e6);
-        adapter.wind(0, 4, 0);
+        strategy.wind(0, 4, 0);
 
         uint seize = 100 * 1e8;
 
-        uint cusdc_before = cusdc.balanceOf(address(adapter));
+        uint cusdc_before = cusdc.balanceOf(address(strategy));
         assertEq(cusdc.balanceOf(address(this)), 0, "no cusdc before");
 
-        uint s = CToken(address(cusdc)).seize(address(this), address(adapter), seize);
+        uint s = CToken(address(cusdc)).seize(address(this), address(strategy), seize);
         assertEq(s, 0, "seize successful");
 
-        uint cusdc_after = cusdc.balanceOf(address(adapter));
+        uint cusdc_after = cusdc.balanceOf(address(strategy));
         assertEq(cusdc.balanceOf(address(this)), seize, "cusdc after");
         assertEq(cusdc_before - cusdc_after, seize, "join supply decreased");
     }
@@ -1227,15 +1341,15 @@ contract RealCompTest is CropTestBase {
         adapter.join(600 * 1e6);
         a.join(100 * 1e6);
         log_named_uint("nps", adapter.nps());
-        log_named_uint("usdc ", usdc.balanceOf(address(adapter)));
-        log_named_uint("cusdc", cusdc.balanceOf(address(adapter)));
+        log_named_uint("usdc ", usdc.balanceOf(address(strategy)));
+        log_named_uint("cusdc", cusdc.balanceOf(address(strategy)));
 
         logs("wind===");
-        adapter.wind(0, 5, 0);
+        strategy.wind(0, 5, 0);
         log_named_uint("nps", adapter.nps());
         log_named_uint("cf", get_cf());
-        log_named_uint("adapter usdc ", usdc.balanceOf(address(adapter)));
-        log_named_uint("adapter cusdc", cusdc.balanceOf(address(adapter)));
+        log_named_uint("adapter usdc ", usdc.balanceOf(address(strategy)));
+        log_named_uint("adapter cusdc", cusdc.balanceOf(address(strategy)));
         log_named_uint("adapter nav  ", adapter.nav());
         log_named_uint("a max usdc    ", mul(adapter.stake(address(a)), adapter.nps()) / 1e18);
 
@@ -1245,15 +1359,87 @@ contract RealCompTest is CropTestBase {
         logs("seize===");
         uint seize = 350 * 1e6 * 1e18 / cusdc.exchangeRateCurrent();
         log_named_uint("seize", seize);
-        uint s = CToken(address(cusdc)).seize(address(this), address(adapter), seize);
+        uint s = CToken(address(cusdc)).seize(address(this), address(strategy), seize);
         assertEq(s, 0, "seize successful");
         log_named_uint("nps", adapter.nps());
         log_named_uint("cf", get_cf());
-        log_named_uint("adapter usdc ", usdc.balanceOf(address(adapter)));
-        log_named_uint("adapter cusdc", cusdc.balanceOf(address(adapter)));
+        log_named_uint("adapter usdc ", usdc.balanceOf(address(strategy)));
+        log_named_uint("adapter cusdc", cusdc.balanceOf(address(strategy)));
         log_named_uint("adapter nav  ", adapter.nav());
         log_named_uint("a max usdc    ", mul(adapter.stake(address(a)), adapter.nps()) / 1e18);
 
         assertLt(adapter.nav(), 350 * 1e18, "nav is halved");
+    }
+}
+
+import "../spell/DssSpell.sol";
+
+interface Pause {
+    function owner() external view returns (address);
+    function delay() external view returns (uint256);
+}
+
+contract RealMakerTest is SimpleCropTest {
+    address  pause = 0xbE286431454714F511008713973d3B053A2d38f3;
+    DssSpell spell;
+
+    ChainlogAbstract constant CHANGELOG = ChainlogAbstract(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
+
+    function setUp() public override {
+        spell = new DssSpell();
+
+        // take control of the pause
+        hevm.store(pause, bytes32(uint(1)), bytes32(uint256(uint160(address(spell)))));
+        // and set zero delay
+        hevm.store(pause, bytes32(uint(4)), bytes32(uint256(0)));
+
+        self  = address(this);
+        init();
+
+        usdc  = Token(CHANGELOG.getAddress("USDC"));
+        cusdc = cToken(CHANGELOG.getAddress("CUSDC"));
+        comp  = Token(CHANGELOG.getAddress("COMP"));
+        troll = Troll(0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B);
+        vat   = MockVat(CHANGELOG.getAddress("MCD_VAT"));
+        adapter = USDCJoin(CHANGELOG.getAddress("MCD_JOIN_USDC_C"));
+
+        // give ourselves some usdc
+        set_usdc(address(this), 1000 * 1e6);
+    }
+
+    function init() internal {
+        uint gas_before_schedule = gasleft();
+        hevm.warp(now - 6 hours);
+        spell.schedule();
+
+        uint gas_before_execute = gasleft();
+        hevm.warp(now + 1);
+        spell.cast();
+        uint gas_after_execute = gasleft();
+
+        log_named_uint("schedule gas", gas_before_schedule - gas_before_execute);
+        log_named_uint("execute  gas", gas_before_execute  - gas_after_execute);
+    }
+
+    function reward(address usr, uint wad) internal override {
+        // override compAccrued in the comptroller
+        uint old = uint(hevm.load(
+            address(troll),
+            keccak256(abi.encode(usr, uint256(20)))
+        ));
+        hevm.store(
+            address(troll),
+            keccak256(abi.encode(usr, uint256(20))),
+            bytes32(old + wad)
+        );
+    }
+    function test_reward() public override {
+        reward(self, 100 ether);
+        assertEq(troll.compAccrued(self), 100 ether);
+    }
+
+    function test_setup() public {
+        assertEq(Pause(pause).owner(), address(spell));
+        assertEq(Pause(pause).delay(), 0);
     }
 }

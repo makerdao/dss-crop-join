@@ -55,46 +55,153 @@ interface Comptroller {
     function getAccountLiquidity(address) external returns (uint,uint,uint);
 }
 
+interface Strategy {
+    function nav() external returns (uint);
+    function harvest() external;
+    function join(uint) external;
+    function exit(uint) external;
+    // temporary
+    function wind(uint,uint,uint) external;
+    function unwind(uint,uint,uint,uint) external;
+    function cgem() external returns (address);
+    function maxf() external returns (uint256);
+    function minf() external returns (uint256);
+}
+
 contract USDCJoin is CropJoin {
-    CToken      public cgem;
-    Comptroller public comptroller;
-
-    uint256 public cf   = 0.75   ether;  // usdc max collateral factor
-    uint256 public maxf = 0.675  ether;  // maximum collateral factor  (90%)
-    uint256 public minf = 0.674 ether;  // minimum collateral factor  (85%)
-
-    constructor(address vat_, bytes32 ilk_, address gem_,
-                address cgem_, address comp_, address comptroller_)
+    Strategy public immutable strategy;
+    constructor(address vat_, bytes32 ilk_, address gem_, address comp_, address strategy_)
         public
         CropJoin(vat_, ilk_, gem_, comp_)
     {
+        strategy = Strategy(strategy_);
+        ERC20(gem_).approve(strategy_, uint(-1));
+    }
+    function nav() public override returns (uint) {
+        uint _nav = add(strategy.nav(), gem.balanceOf(address(this)));
+        return mul(_nav, 10 ** (18 - dec));
+    }
+    function crop() internal override returns (uint) {
+        strategy.harvest();
+        return super.crop();
+    }
+    function join(uint val) public override {
+        super.join(val);
+        strategy.join(val);
+    }
+    function exit(uint val) public override {
+        strategy.exit(val);
+        super.exit(val);
+    }
+    function flee() public override {
+        address usr = msg.sender;
+        uint wad = vat.gem(ilk, usr);
+        uint val = wmul(wmul(wad, nps()), 10 ** dec);
+        strategy.exit(val);
+        super.flee();
+    }
+
+    // todo: remove?
+    // need to deal with instances of adapter.unwind in tests
+    function unwind(uint repay_, uint loops_, uint exit_, uint loan_) external {
+        gem.transferFrom(msg.sender, address(this), loan_);
+        strategy.unwind(repay_, loops_, exit_, loan_);
+        super.exit(exit_);
+        gem.transfer(msg.sender, loan_);
+    }
+}
+
+contract CompStrat {
+    ERC20       public immutable gem;
+    CToken      public immutable cgem;
+    CToken      public immutable comp;
+    Comptroller public immutable comptroller;
+
+    uint256 public cf   = 0;  // ctoken max collateral factor       [wad]
+    uint256 public maxf = 0;  // maximum target collateral factor   [wad]
+    uint256 public minf = 0;  // minimum target collateral factor   [wad]
+
+    uint256 constant DUST = 1e6;  // value (in usdc) below which to stop looping
+
+    constructor(address gem_, address cgem_, address comp_, address comptroller_)
+        public
+    {
+        wards[msg.sender] = 1;
+
+        gem  = ERC20(gem_);
         cgem = CToken(cgem_);
+        comp = CToken(comp_);
         comptroller = Comptroller(comptroller_);
 
-        gem.approve(address(cgem), uint(-1));
+        ERC20(gem_).approve(cgem_, uint(-1));
 
         address[] memory ctokens = new address[](1);
-        ctokens[0] = address(cgem);
+        ctokens[0] = cgem_;
         uint256[] memory errors = new uint[](1);
-        errors = comptroller.enterMarkets(ctokens);
+        errors = Comptroller(comptroller_).enterMarkets(ctokens);
         require(errors[0] == 0);
     }
 
-    function nav() public override returns (uint) {
+    function add(uint x, uint y) public pure returns (uint z) {
+        require((z = x + y) >= x, "ds-math-add-overflow");
+    }
+    function sub(uint x, uint y) public pure returns (uint z) {
+        require((z = x - y) <= x, "ds-math-sub-underflow");
+    }
+    function zsub(uint x, uint y) public pure returns (uint z) {
+        return sub(x, min(x, y));
+    }
+    function mul(uint x, uint y) public pure returns (uint z) {
+        require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
+    }
+    uint256 constant WAD  = 10 ** 18;
+    function wmul(uint x, uint y) public pure returns (uint z) {
+        z = mul(x, y) / WAD;
+    }
+    function wdiv(uint x, uint y) public pure returns (uint z) {
+        z = mul(x, WAD) / y;
+    }
+    function min(uint x, uint y) internal pure returns (uint z) {
+        return x <= y ? x : y;
+    }
+
+    function nav() public returns (uint) {
         uint _nav = add(gem.balanceOf(address(this)),
                         sub(cgem.balanceOfUnderlying(address(this)),
                             cgem.borrowBalanceCurrent(address(this))));
-        return mul(_nav, 10 ** (18 - dec));
+        return _nav;
     }
 
-    function crop() internal override returns (uint) {
+    function harvest() external auth {
         address[] memory ctokens = new address[](1);
         address[] memory users   = new address[](1);
         ctokens[0] = address(cgem);
         users  [0] = address(this);
 
         comptroller.claimComp(users, ctokens, true, true);
-        return sub(bonus.balanceOf(address(this)), stock);
+        comp.transfer(msg.sender, comp.balanceOf(address(this)));
+    }
+
+    // --- Auth ---
+    mapping (address => uint) public wards;
+    function rely(address usr) external auth { wards[usr] = 1; }
+    function deny(address usr) external auth { wards[usr] = 0; }
+    modifier auth {
+        require(wards[msg.sender] == 1, "GemJoin/not-authorized");
+        _;
+    }
+
+    function join(uint256 val) public auth {
+        gem.transferFrom(msg.sender, address(this), val);
+    }
+    function exit(uint256 val) public auth {
+        gem.transfer(msg.sender, val);
+    }
+
+    function tune(uint cf_, uint maxf_, uint minf_) external auth {
+        cf   = cf_;
+        maxf = maxf_;
+        minf = minf_;
     }
 
     // borrow_: how much underlying to borrow (dec decimals)
@@ -115,14 +222,17 @@ contract USDCJoin is CropJoin {
         for (uint i=0; i < loops_; i++) {
             uint s = cgem.balanceOfUnderlying(address(this));
             uint b = cgem.borrowBalanceStored(address(this));
+            // math overflow if
+            //   - b / (s + L) > cf  [insufficient loan to unwind]
+            //   - minf > 1e18       [bad configuration]
+            //   - minf < u          [can't wind over minf]
             uint x1 = sub(wmul(s, cf), b);
             uint x2 = wdiv(sub(wmul(sub(s, loan_), minf), b),
                            sub(1e18, minf));
             uint max_borrow = min(x1, x2);
-            if (max_borrow > 0) {
-                require(cgem.borrow(max_borrow) == 0);
-                require(cgem.mint(max_borrow) == 0);
-            }
+            if (max_borrow < DUST) break;
+            require(cgem.borrow(max_borrow) == 0);
+            require(cgem.mint(max_borrow) == 0);
         }
         if (borrow_ > 0) {
             require(cgem.borrow(borrow_) == 0);
@@ -135,7 +245,7 @@ contract USDCJoin is CropJoin {
 
         uint u = wdiv(cgem.borrowBalanceStored(address(this)),
                       cgem.balanceOfUnderlying(address(this)));
-        require(u < maxf);
+        require(u < maxf, "bad-wind");
     }
     // repay_: how much underlying to repay (dec decimals)
     // loops_: how many times to repeat a max repay loop before the
@@ -150,30 +260,33 @@ contract USDCJoin is CropJoin {
         if (loan_ > 0) {
             require(gem.transferFrom(msg.sender, address(this), loan_));
         }
-        require(cgem.mint(gem.balanceOf(address(this))) == 0);
+        require(cgem.mint(gem.balanceOf(address(this))) == 0, "failed-mint");
 
         for (uint i=0; i < loops_; i++) {
             uint s = cgem.balanceOfUnderlying(address(this));
             uint b = cgem.borrowBalanceStored(address(this));
+            // math overflow if
+            //   - [insufficient loan to unwind]
+            //   - [insufficient loan for exit]
+            //   - [bad configuration]
             uint x1 = wdiv(sub(wmul(s, cf), b), cf);
-            uint x2 = wdiv(sub(add(b, wmul(exit_, maxf)),
+            uint x2 = wdiv(this.zsub(add(b, wmul(exit_, maxf)),
                                wmul(sub(s, loan_), maxf)),
                            sub(1e18, maxf));
             uint max_repay = min(x1, x2);
-            if (max_repay > 0) {
-                require(cgem.redeemUnderlying(max_repay) == 0);
-                require(cgem.repayBorrow(max_repay) == 0);
-            }
+            if (max_repay < DUST) break;
+            require(cgem.redeemUnderlying(max_repay) == 0, "failed-redeem");
+            require(cgem.repayBorrow(max_repay) == 0, "failed-repay");
         }
         if (repay_ > 0) {
-            require(cgem.redeemUnderlying(repay_) == 0);
-            require(cgem.repayBorrow(repay_) == 0);
+            require(cgem.redeemUnderlying(repay_) == 0, "failed-redeem");
+            require(cgem.repayBorrow(repay_) == 0, "failed-repay");
         }
         if (exit_ > 0 || loan_ > 0) {
-            require(cgem.redeemUnderlying(add(exit_, loan_)) == 0);
+            require(cgem.redeemUnderlying(add(exit_, loan_)) == 0, "failed-redeem");
         }
         if (loan_ > 0) {
-            require(gem.transfer(msg.sender, loan_));
+            require(gem.transfer(msg.sender, loan_), "failed-transfer");
         }
         if (exit_ > 0) {
             exit(exit_);
@@ -181,9 +294,9 @@ contract USDCJoin is CropJoin {
 
         uint u_ = wdiv(cgem.borrowBalanceStored(address(this)),
                        cgem.balanceOfUnderlying(address(this)));
-        bool ramping = u  < minf && u_ > u && u_ < maxf;
-        bool damping = u  > maxf && u_ < u && u_ > minf;
-        bool tamping = u_ > minf && u_ < maxf;
-        require(ramping || damping || tamping);
+        bool ramping = u  <  minf && u_ > u && u_ < maxf;
+        bool damping = u  >  maxf && u_ < u && u_ > minf;
+        bool tamping = u_ >= minf && u_ <= maxf;
+        require(ramping || damping || tamping, "bad-unwind");
     }
 }
