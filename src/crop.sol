@@ -1,5 +1,4 @@
-pragma solidity ^0.6.7;
-pragma experimental ABIEncoderV2;
+pragma solidity 0.6.12;
 
 interface ERC20 {
     function balanceOf(address owner) external view returns (uint256);
@@ -19,7 +18,7 @@ interface VatLike {
     function slip(bytes32 ilk, address usr, int256 wad) external;
     function flux(bytes32 ilk, address src, address dst, uint256 wad) external;
     function  gem(bytes32 ilk, address usr) external returns (uint256);
-    function urns(bytes32 ilk, address usr) external returns (Urn memory);
+    function urns(bytes32 ilk, address usr) external returns (uint256, uint256);
 }
 
 // receives tokens and shares them among holders
@@ -41,7 +40,7 @@ contract CropJoin {
         vat = VatLike(vat_);
         ilk = ilk_;
         gem = ERC20(gem_);
-        uint dec_ = ERC20(gem_).decimals();
+        uint256 dec_ = ERC20(gem_).decimals();
         require(dec_ <= 18);
         dec = dec_;
 
@@ -91,7 +90,6 @@ contract CropJoin {
         return sub(bonus.balanceOf(address(this)), stock);
     }
 
-    // decimals: underlying=dec comp=18 gem=18
     function join(uint256 val) public virtual {
         uint256 wad = wdiv(mul(val, 10 ** (18 - dec)), nps());
         require(int256(wad) >= 0);
@@ -151,7 +149,9 @@ contract CropJoin {
         crops[src] = sub(crops[src], rmul(share, wad));
         crops[dst] = add(crops[dst], rmul(share, wad));
 
-        require(stake[src] >= add(vat.gem(ilk, src), vat.urns(ilk, src).ink));
-        require(stake[dst] <= add(vat.gem(ilk, dst), vat.urns(ilk, dst).ink));
+        (uint256 ink,) = vat.urns(ilk, src);
+        require(stake[src] >= add(vat.gem(ilk, src), ink));
+        (ink,) = vat.urns(ilk, dst);
+        require(stake[dst] <= add(vat.gem(ilk, dst), ink));
     }
 }
