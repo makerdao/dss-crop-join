@@ -38,7 +38,7 @@ contract SushiJoin is CropJoin {
         masterchef = MasterChefLike(masterchef_);
         pid = pid_;
 
-        ERC20(gem_).approve(masterchef_, uint(-1));
+        ERC20(gem_).approve(masterchef_, uint256(-1));
         wards[msg.sender] = 1;
     }
     function nav() public override returns (uint256) {
@@ -62,7 +62,7 @@ contract SushiJoin is CropJoin {
     }
     function flee() public override {
         if (live == 1) {
-            uint val = vat.gem(ilk, msg.sender);
+            uint256 val = vat.gem(ilk, msg.sender);
             masterchef.withdraw(pid, val);
         }
         super.flee();

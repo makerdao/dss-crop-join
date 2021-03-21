@@ -11,10 +11,10 @@ interface SushiLPLike is ERC20 {
     function token1() external view returns (address);
 }
 
-contract MockVat is VatLike {
-    mapping (bytes32 => mapping (address => uint)) public override gem;
-    function urns(bytes32,address) external override returns (Urn memory) {
-        return Urn(0, 0);
+contract MockVat {
+    mapping (bytes32 => mapping (address => uint)) public gem;
+    function urns(bytes32,address) external returns (uint256, uint256) {
+        return (0, 0);
     }
     function add(uint x, int y) internal pure returns (uint z) {
         z = x + uint(y);
@@ -27,10 +27,10 @@ contract MockVat is VatLike {
     function sub(uint x, uint y) internal pure returns (uint z) {
         require((z = x - y) <= x, "vat/sub-fail");
     }
-    function slip(bytes32 ilk, address usr, int256 wad) external override {
+    function slip(bytes32 ilk, address usr, int256 wad) external {
         gem[ilk][usr] = add(gem[ilk][usr], wad);
     }
-    function flux(bytes32 ilk, address src, address dst, uint256 wad) external override {
+    function flux(bytes32 ilk, address src, address dst, uint256 wad) external {
         gem[ilk][src] = sub(gem[ilk][src], wad);
         gem[ilk][dst] = add(gem[ilk][dst], wad);
     }
