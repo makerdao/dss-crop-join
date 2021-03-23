@@ -15,8 +15,16 @@ contract SushiJoin is CropJoin {
 
     // --- Auth ---
     mapping (address => uint) public wards;
-    function rely(address usr) external auth { wards[usr] = 1; }
-    function deny(address usr) external auth { wards[usr] = 0; }
+    function rely(address usr) external auth {
+        wards[usr] = 1;
+
+        emit Rely(usr);
+    }
+    function deny(address usr) external auth {
+        wards[usr] = 0;
+
+        emit Deny(usr);
+    }
     modifier auth {
         require(wards[msg.sender] == 1, "GemJoin/not-authorized");
         _;
@@ -25,6 +33,10 @@ contract SushiJoin is CropJoin {
     MasterChefLike immutable public masterchef;
     uint256 immutable public pid;
     uint256 public live = 1;
+
+    // --- Events ---
+    event Rely(address indexed usr);
+    event Deny(address indexed usr);
 
     constructor(address vat_, bytes32 ilk_, address gem_, address bonus_, address masterchef_, uint256 pid_)
         public

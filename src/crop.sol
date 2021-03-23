@@ -23,6 +23,7 @@ interface VatLike {
 
 // receives tokens and shares them among holders
 contract CropJoin {
+
     VatLike     public immutable vat;    // cdp engine
     bytes32     public immutable ilk;    // collateral type
     ERC20       public immutable gem;    // collateral token
@@ -35,6 +36,12 @@ contract CropJoin {
 
     mapping (address => uint256) public crops; // crops per user  [wad]
     mapping (address => uint256) public stake; // gems per user   [wad]
+
+    // --- Events ---
+    event Join(uint256 val);
+    event Exit(uint256 val);
+    event Flee();
+    event Tack(address src, address dst, uint256 wad);
 
     constructor(address vat_, bytes32 ilk_, address gem_, address bonus_) public {
         vat = VatLike(vat_);
@@ -70,9 +77,6 @@ contract CropJoin {
     function rdiv(uint256 x, uint256 y) public pure returns (uint256 z) {
         z = mul(x, RAY) / y;
     }
-    function min(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        return x <= y ? x : y;
-    }
 
     // Net Asset Valuation [wad]
     function nav() public virtual returns (uint256) {
@@ -107,6 +111,8 @@ contract CropJoin {
             stake[usr] = add(stake[usr], wad);
         }
         crops[usr] = rmul(stake[usr], share);
+
+        emit Join(val);
     }
 
     function exit(uint256 val) public virtual {
@@ -126,6 +132,8 @@ contract CropJoin {
             stake[usr] = sub(stake[usr], wad);
         }
         crops[usr] = rmul(stake[usr], share);
+
+        emit Exit(val);
     }
 
     function flee() public virtual {
@@ -140,6 +148,8 @@ contract CropJoin {
         total = sub(total, wad);
         stake[usr] = sub(stake[usr], wad);
         crops[usr] = rmul(stake[usr], share);
+
+        emit Flee();
     }
 
     function tack(address src, address dst, uint256 wad) public {
@@ -153,5 +163,8 @@ contract CropJoin {
         require(stake[src] >= add(vat.gem(ilk, src), ink));
         (ink,) = vat.urns(ilk, dst);
         require(stake[dst] <= add(vat.gem(ilk, dst), ink));
+
+        emit Tack(src, dst, wad);
     }
+
 }
