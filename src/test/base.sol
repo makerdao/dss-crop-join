@@ -9,29 +9,6 @@ interface Hevm {
     function load(address,bytes32) external returns (bytes32);
 }
 
-contract CanCall {
-    function try_call(address addr, bytes calldata data) external returns (bool) {
-        bytes memory _data = data;
-        assembly {
-            let ok := call(gas(), addr, 0, add(_data, 0x20), mload(_data), 0, 0)
-            let free := mload(0x40)
-            mstore(free, ok)
-            mstore(0x40, add(free, 32))
-            revert(free, 32)
-        }
-    }
-    function can_call(address addr, bytes memory data) internal returns (bool) {
-        (bool ok, bytes memory success) = address(this).call(
-                                            abi.encodeWithSignature(
-                                                "try_call(address,bytes)"
-                                                , addr
-                                                , data
-                                                ));
-        ok = abi.decode(success, (bool));
-        if (ok) return true;
-    }
-}
-
 contract TestBase is DSTest {
     Hevm hevm = Hevm(HEVM_ADDRESS);
 
@@ -50,5 +27,12 @@ contract TestBase is DSTest {
     }
     function wdiv(uint x, uint y) public pure returns (uint z) {
         z = mul(x, WAD) / y;
+    }
+    uint256 constant RAY  = 10 ** 27;
+    function rmul(uint256 x, uint256 y) public pure returns (uint256 z) {
+        z = mul(x, y) / RAY;
+    }
+    function rdiv(uint256 x, uint256 y) public pure returns (uint256 z) {
+        z = mul(x, RAY) / y;
     }
 }

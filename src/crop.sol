@@ -1,5 +1,7 @@
 pragma solidity 0.6.12;
 
+import "dss-interfaces/dss/VatAbstract.sol";
+
 interface ERC20 {
     function balanceOf(address owner) external view returns (uint256);
     function transfer(address dst, uint256 amount) external returns (bool);
@@ -9,22 +11,10 @@ interface ERC20 {
     function decimals() external returns (uint8);
 }
 
-struct Urn {
-    uint256 ink;   // Locked Collateral  [wad]
-    uint256 art;   // Normalised Debt    [wad]
-}
-
-interface VatLike {
-    function slip(bytes32 ilk, address usr, int256 wad) external;
-    function flux(bytes32 ilk, address src, address dst, uint256 wad) external;
-    function  gem(bytes32 ilk, address usr) external returns (uint256);
-    function urns(bytes32 ilk, address usr) external returns (uint256, uint256);
-}
-
 // receives tokens and shares them among holders
 contract CropJoin {
 
-    VatLike     public immutable vat;    // cdp engine
+    VatAbstract public immutable vat;    // cdp engine
     bytes32     public immutable ilk;    // collateral type
     ERC20       public immutable gem;    // collateral token
     uint256     public immutable dec;    // gem decimals
@@ -41,10 +31,10 @@ contract CropJoin {
     event Join(uint256 val);
     event Exit(uint256 val);
     event Flee();
-    event Tack(address src, address dst, uint256 wad);
+    event Tack(address indexed src, address indexed dst, uint256 wad);
 
     constructor(address vat_, bytes32 ilk_, address gem_, address bonus_) public {
-        vat = VatLike(vat_);
+        vat = VatAbstract(vat_);
         ilk = ilk_;
         gem = ERC20(gem_);
         uint256 dec_ = ERC20(gem_).decimals();

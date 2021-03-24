@@ -3,6 +3,8 @@ pragma solidity 0.6.12;
 import "./crop.sol";
 
 interface MasterChefLike {
+    function pendingSushi(uint256 _pid, address _user) external view returns (uint256);
+    function userInfo(uint256 _pid, address _user) external view returns (uint256, uint256);
     function deposit(uint256 _pid, uint256 _amount) external;
     function withdraw(uint256 _pid, uint256 _amount) external;
     function poolInfo(uint256 _pid) external view returns (address, uint256, uint256, uint256);
@@ -30,9 +32,9 @@ contract SushiJoin is CropJoin {
         _;
     }
 
-    MasterChefLike immutable public masterchef;
-    uint256 immutable public pid;
-    uint256 public live = 1;
+    MasterChefLike  immutable public masterchef;
+    uint256         immutable public pid;
+    bool            public live = true;
 
     // --- Events ---
     event Rely(address indexed usr);
@@ -56,23 +58,25 @@ contract SushiJoin is CropJoin {
         return total;
     }
     function crop() internal override returns (uint256) {
-        // withdraw of 0 will give us only the rewards
-        masterchef.withdraw(pid, 0);
+        if (live) {
+            // withdraw of 0 will give us only the rewards
+            masterchef.withdraw(pid, 0);
+        }
         return super.crop();
     }
     function join(uint256 val) public override {
-        require(live == 1, "SushiJoin/not-live");
+        require(live, "SushiJoin/not-live");
         super.join(val);
         masterchef.deposit(pid, val);
     }
     function exit(uint256 val) public override {
-        if (live == 1) {
+        if (live) {
             masterchef.withdraw(pid, val);
         }
         super.exit(val);
     }
     function flee() public override {
-        if (live == 1) {
+        if (live) {
             uint256 val = vat.gem(ilk, msg.sender);
             masterchef.withdraw(pid, val);
         }
@@ -80,6 +84,6 @@ contract SushiJoin is CropJoin {
     }
     function cage() external auth {
         masterchef.emergencyWithdraw(pid);
-        live = 0;
+        live = false;
     }
 }
