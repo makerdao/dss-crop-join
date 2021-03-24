@@ -34,6 +34,7 @@ contract Usr {
         pid = adapter.pid();
         
         pair.approve(address(adapter), uint(-1));
+        pair.approve(address(masterchef), uint(-1));
     }
 
     function join(uint wad) public {
@@ -95,6 +96,9 @@ contract Usr {
     }
     function withdrawMasterchef(uint256 amount) public {
         masterchef.withdraw(pid, amount);
+    }
+    function getMasterchefDepositAmount() public view returns (uint256 amount) {
+        (amount,) = masterchef.userInfo(pid, address(this));
     }
     function hope(address usr) public {
         vat.hope(usr);
@@ -486,7 +490,7 @@ contract SushiTest is TestBase {
     }
 
     function test_complex_fuzz(uint256 nruns, uint256 _seed) public {
-        nruns = nruns % 50;
+        nruns = nruns % 100;
         seed = _seed;
 
         Usr[3] memory users = [user1, user2, user3];
@@ -494,7 +498,7 @@ contract SushiTest is TestBase {
         for (uint256 i = 0; i < nruns; i++) {
             hevm.roll(block.number + rand() % 100);
 
-            uint256 action = rand() % 2;
+            uint256 action = rand() % 4;
             uint256 u = rand() % 3;
             Usr user = users[u];
             if (action == 0) {
@@ -506,7 +510,7 @@ contract SushiTest is TestBase {
                 log_named_string("action", "join");
                 log_named_uint("amount", amount);
                 doJoin(user, amount);
-            } else {
+            } else if (action == 1) {
                 // Exit
                 if (user.gems() == 0) continue;
 
@@ -522,6 +526,24 @@ contract SushiTest is TestBase {
                     log_named_uint("amount", amount);
                     doExit(user, amount);
                 }
+            } else if (action == 2) {
+                // Simulate 3rd party user submitting LP tokens directly to the masterchef
+                if (user.getLPBalance() == 0) continue;
+
+                uint256 amount = rand() % (user.getLPBalance() + 1);
+                log_named_uint("user", u);
+                log_named_string("action", "directDeposit");
+                log_named_uint("amount", amount);
+                user.depositMasterchef(amount);
+            } else if (action == 3) {
+                // Simulate 3rd party withdrawl
+                if (user.getMasterchefDepositAmount() == 0) continue;
+
+                uint256 amount = rand() % (user.getMasterchefDepositAmount() + 1);
+                log_named_uint("user", u);
+                log_named_string("action", "directWithdrawl");
+                log_named_uint("amount", amount);
+                user.withdrawMasterchef(amount);
             }
         }
     }
