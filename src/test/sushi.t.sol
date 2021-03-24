@@ -182,12 +182,15 @@ contract SushiTest is TestBase {
 
         usr.join(amount);
 
+        uint256 sushiToUser = 0;
+        if (ptotal > 0) {
+            sushiToUser = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal)) - pcrops;
+        }
+        assertEq(usr.sushi(), psushi + sushiToUser);
         if (join.total() > 0) {
             assertEq(join.stock(), pstock + punclaimedRewards);
-            assertEq(join.share(), pshare + rdiv(punclaimedRewards, join.total()));
         } else {
             assertTrue(join.stock() <= 1);  // May be a slight rounding error
-            assertEq(join.share(), pshare);
         }
         assertEq(join.total(), ptotal + amount);
         assertEq(usr.stake(), pstake + amount);
@@ -195,7 +198,11 @@ contract SushiTest is TestBase {
         assertEq(usr.gems(), pgems + amount);
         assertEq(unclaimedAdapterRewards(), 0);
         assertEq(masterchefDepositAmount(), join.total());
-        assertEq(usr.sushi(), psushi + (usr.crops() - pcrops));
+        if (ptotal > 0) {
+            assertEq(join.share(), pshare + rdiv(punclaimedRewards, ptotal));
+        } else {
+            assertEq(join.share(), pshare);
+        }
     }
     function doExit(Usr usr, uint256 amount) public {
         assertTrue(amount <= usr.gems());
@@ -204,6 +211,7 @@ contract SushiTest is TestBase {
         uint256 pshare = join.share();
         uint256 ptotal = join.total();
         uint256 pstake = usr.stake();
+        uint256 pcrops = usr.crops();
         uint256 pgems = usr.gems();
         uint256 psushi = usr.sushi();
         uint256 punclaimedRewards = unclaimedAdapterRewards();
@@ -221,18 +229,20 @@ contract SushiTest is TestBase {
         assertEq(usr.crops(), rmul(usr.stake(), join.share()));
         assertEq(usr.gems(), pgems - amount);
         if (join.live()) {
+            uint256 sushiToUser = 0;
+            if (ptotal > 0) {
+                sushiToUser = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal)) - pcrops;
+            }
+            assertEq(usr.sushi(), psushi + sushiToUser);
             if (join.total() > 0) {
-                assertEq(join.stock(), pstock + punclaimedRewards - rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal)));
+                assertEq(join.stock(), pstock + punclaimedRewards - sushiToUser);
             } else {
-                log_named_uint("stock", join.stock());
                 assertTrue(join.stock() <= dust);  // May be a slight rounding error
             }
             if (ptotal > 0) {
                 assertEq(join.share(), pshare + rdiv(punclaimedRewards, ptotal));
-                assertEq(usr.sushi(), psushi + rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal)));
             } else {
                 assertEq(join.share(), pshare);
-                assertEq(usr.sushi(), psushi);
             }
             assertEq(masterchefDepositAmount(), join.total());
             assertEq(unclaimedAdapterRewards(), 0);
@@ -281,11 +291,38 @@ contract SushiTest is TestBase {
         doJoin(user1, amount1);
         doJoin(user2, amount2);
 
-        // Allow rewards to collect
         hevm.roll(block.number + blocksToWait);
 
         doExit(user1, amount1);
         doExit(user2, amount2);
+    }
+
+    // Join and partial exit, but with a delay in between to collect rewards with 2 users
+    function prewards2(uint256 amount1, uint256 amount2, uint256 blocksToWait) public {
+        doJoin(user1, amount1);
+        doJoin(user2, amount2);
+
+        hevm.roll(block.number + blocksToWait);
+
+        doExit(user1, amount1 / 2);
+        doExit(user2, amount2 / 2);
+    }
+
+    // Multiple delays with partial withdraws
+    function multi2(uint256 amount1, uint256 amount2, uint256 wait1, uint256 wait2, uint256 wait3) public {
+        doJoin(user1, amount1);
+
+        hevm.roll(block.number + wait1);
+
+        doJoin(user2, amount2);
+
+        hevm.roll(block.number + wait2);
+
+        doExit(user1, amount1 / 4);
+        
+        hevm.roll(block.number + wait3);
+
+        doExit(user2, amount2 / 3);
     }
 
     function test_basic_all() public {
@@ -321,6 +358,22 @@ contract SushiTest is TestBase {
 
     function test_rewards2_fuzz(uint256 amount1, uint256 amount2, uint256 blocks) public {
         rewards2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), blocks % 100000);
+    }
+
+    function test_prewards2_all() public {
+        prewards2(user1.getLPBalance(), user2.getLPBalance(), 100);
+    }
+
+    function test_prewards2_fuzz(uint256 amount1, uint256 amount2, uint256 blocks) public {
+        prewards2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), blocks % 100000);
+    }
+
+    function test_multi2_all() public {
+        multi2(user1.getLPBalance(), user2.getLPBalance(), 50, 126, 1);
+    }
+
+    function test_multi2_fuzz(uint256 amount1, uint256 amount2, uint256 wait1, uint256 wait2, uint256 wait3) public {
+        multi2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), wait1 % 100000, wait2 % 100000, wait2 % 100000);
     }
 
     /*function test_rewards() public {
