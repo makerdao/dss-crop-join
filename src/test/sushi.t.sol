@@ -96,6 +96,9 @@ contract Usr {
     function withdrawMasterchef(uint256 amount) public {
         masterchef.withdraw(pid, amount);
     }
+    function hope(address usr) public {
+        vat.hope(usr);
+    }
 
 }
 
@@ -188,7 +191,7 @@ contract SushiTest is TestBase {
         }
         assertEq(usr.sushi(), psushi + sushiToUser);
         if (join.total() > 0) {
-            assertEq(join.stock(), pstock + punclaimedRewards);
+            assertEq(join.stock(), pstock + punclaimedRewards - sushiToUser);
         } else {
             assertTrue(join.stock() <= 1);  // May be a slight rounding error
         }
@@ -196,6 +199,7 @@ contract SushiTest is TestBase {
         assertEq(usr.stake(), pstake + amount);
         assertEq(usr.crops(), rmul(usr.stake(), join.share()));
         assertEq(usr.gems(), pgems + amount);
+        assertEq(pair.balanceOf(address(join)), 0);
         assertEq(unclaimedAdapterRewards(), 0);
         assertEq(masterchefDepositAmount(), join.total());
         if (ptotal > 0) {
@@ -245,25 +249,59 @@ contract SushiTest is TestBase {
                 assertEq(join.share(), pshare);
             }
             assertEq(masterchefDepositAmount(), join.total());
+            assertEq(pair.balanceOf(address(join)), 0);
             assertEq(unclaimedAdapterRewards(), 0);
         } else {
             assertEq(join.stock(), pstock);
             assertEq(join.share(), pshare);
+            assertEq(masterchefDepositAmount(), 0);
             assertEq(pair.balanceOf(address(join)), join.total());
             assertEq(unclaimedAdapterRewards(), punclaimedRewards);
             assertEq(usr.sushi(), psushi);
         }
     }
+    function doFlee(Usr usr) public {
+        uint256 amount = usr.gems();
+
+        uint256 pstock = join.stock();
+        uint256 pshare = join.share();
+        uint256 ptotal = join.total();
+        uint256 psushi = usr.sushi();
+        uint256 punclaimedRewards = unclaimedAdapterRewards();
+
+        if (join.live()) {
+            assertEq(masterchefDepositAmount(), join.total());
+        } else {
+            assertEq(pair.balanceOf(address(join)), join.total());
+        }
+
+        usr.flee();
+
+        assertEq(join.total(), ptotal - amount);
+        assertEq(usr.stake(), 0);
+        assertEq(usr.crops(), 0);
+        assertEq(usr.gems(), 0);
+        if (join.live()) {
+            assertEq(masterchefDepositAmount(), join.total());
+            assertEq(pair.balanceOf(address(join)), 0);
+        } else {
+            assertEq(masterchefDepositAmount(), 0);
+            assertEq(pair.balanceOf(address(join)), join.total());
+        }
+        assertEq(join.stock(), pstock);
+        assertEq(join.share(), pshare);
+        assertEq(unclaimedAdapterRewards(), punclaimedRewards);
+        assertEq(usr.sushi(), psushi);
+    }
     function doCage() public {
         uint256 prewards = sushi.balanceOf(address(join));
-        uint256 punclaimedRewards = unclaimedAdapterRewards();
 
         assertEq(pair.balanceOf(address(join)), 0);
 
         join.cage();
 
         // Should not take the rewards, only the actual LP token
-        assertEq(unclaimedAdapterRewards(), punclaimedRewards); 
+        assertEq(unclaimedAdapterRewards(), 0); 
         assertEq(sushi.balanceOf(address(join)), prewards);
         assertEq(pair.balanceOf(address(join)), join.total());
     }
@@ -373,102 +411,119 @@ contract SushiTest is TestBase {
     }
 
     function test_multi2_fuzz(uint256 amount1, uint256 amount2, uint256 wait1, uint256 wait2, uint256 wait3) public {
-        multi2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), wait1 % 100000, wait2 % 100000, wait2 % 100000);
+        multi2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), wait1 % 100000, wait2 % 100000, wait3 % 100000);
     }
 
-    /*function test_rewards() public {
-        uint256 lpTokens = user1.getLPBalance();
-        user1.approve(address(join), uint(-1));
-        user1.join(lpTokens);
-
-        assertEq(sushi.balanceOf(address(user1)), 0);
-        assertEq(sushi.balanceOf(address(join)), 0);
-
-        hevm.roll(block.number + 100);
-
-        // Trigger a crop into the join adapter
-        user2.exit(0);
-
-        uint256 rewardsSushi = sushi.balanceOf(address(join));
-        uint256 roundingError = 10;
-        assertEq(sushi.balanceOf(address(user1)), 0);
-        assertEq(sushi.balanceOf(address(user2)), 0);
-        assertTrue(rewardsSushi > 0);
-
-        // Exit just the rewards to user1
-        user1.exit(0);
-        assertTrue(sushi.balanceOf(address(user1)) >= rewardsSushi - roundingError);
-        assertEq(sushi.balanceOf(address(user2)), 0);
-        assertTrue(sushi.balanceOf(address(join)) <= roundingError);
-
-        // Pull out the LP tokens
-        user1.exit(lpTokens);
-        assertTrue(sushi.balanceOf(address(user1)) >= rewardsSushi - roundingError);
-        assertEq(user1.getLPBalance(), lpTokens);
-    }
-
-    function test_cage() public {
-        uint256 lpTokens1 = user1.getLPBalance();
-        user1.approve(address(join), uint(-1));
-        user1.join(lpTokens1);
-
-        uint256 lpTokens2 = user2.getLPBalance();
-        user2.approve(address(join), uint(-1));
-        user2.join(lpTokens2);
-
-        hevm.roll(block.number + 100);
-
-        user2.exit(lpTokens2);
-        assertEq(user2.getLPBalance(), lpTokens2);
-
-        hevm.roll(block.number + 200);
-
-        // Emergency situation -- need to cage
-        join.cage();
-
-        assertEq(pair.balanceOf(address(join)), lpTokens1);
-        assertEq(pair.balanceOf(address(join)), join.total());
-
-        user1.flee();
-
-        assertEq(pair.balanceOf(address(join)), 0);
-        assertEq(user1.getLPBalance(), lpTokens1);
-    }
-
-    function testFail_cage_join() public {
-        join.cage();
-        uint256 lpTokens = user1.getLPBalance();
-        user1.approve(address(join), uint(-1));
-        user1.join(lpTokens);
+    function test_flee() public {
+        doJoin(user1, user1.getLPBalance());
+        doJoin(user2, user2.getLPBalance() / 4);
+        doFlee(user1);
     }
 
     function testFail_cant_steal_rewards() public {
-        uint256 lpTokens1 = user1.getLPBalance();
-        user1.approve(address(join), uint(-1));
-        user1.join(lpTokens1);
+        uint256 amount = user1.getLPBalance();
+        doJoin(user1, amount);
 
         hevm.roll(block.number + 100);
 
         // user2 has no stake and so should not be able to take user1's rewards
-        user2.tack(address(user1), address(user2), lpTokens1);
+        user2.tack(address(user1), address(user2), amount);
     }
 
     function test_auction_take_rewards() public {
-        uint256 lpTokens1 = user1.getLPBalance();
-        uint256 lpTokens2 = user2.getLPBalance();
-        user1.approve(address(join), uint(-1));
-        user1.join(lpTokens1);
+        uint256 amount1 = user1.getLPBalance();
+        uint256 amount2 = user2.getLPBalance();
+        user1.join(amount1);
 
         hevm.roll(block.number + 100);
 
         // user2 takes user1's gems (via auction or something)
-        vat.flux(ilk, address(user1), address(user2), lpTokens1);
+        user1.hope(address(this));
+        vat.flux(ilk, address(user1), address(user2), amount1);
 
         // user2 should be able to take the rewards as well
-        user2.tack(address(user1), address(user2), lpTokens1);
-        user2.exit(lpTokens1);
+        user2.tack(address(user1), address(user2), amount1);
+        user2.exit(amount1);
 
-        assertEq(user2.getLPBalance(), lpTokens1 + lpTokens2);
-        assertTrue(sushi.balanceOf(address(user2)) > 0);
-    }*/
+        assertEq(user2.getLPBalance(), amount1 + amount2);
+        assertTrue(user2.sushi() > 0);
+    }
+
+    function test_cage() public {
+        uint256 amount1 = user1.getLPBalance();
+        uint256 amount2 = user2.getLPBalance();
+        doJoin(user1, amount1);
+        doJoin(user2, amount2);
+
+        hevm.roll(block.number + 100);
+
+        doExit(user2, amount2 / 4);
+        assertEq(join.total(), amount1 + amount2 - (amount2 / 4));
+        assertEq(user2.getLPBalance(), amount2 / 4);
+
+        hevm.roll(block.number + 200);
+
+        // Emergency situation -- need to cage
+        doCage();
+
+        assertEq(pair.balanceOf(address(join)), amount1 + amount2 - (amount2 / 4));
+        assertEq(pair.balanceOf(address(join)), join.total());
+
+        doFlee(user1);
+
+        assertEq(pair.balanceOf(address(join)), amount2 - (amount2 / 4));
+        assertEq(user1.getLPBalance(), amount1);
+
+        doExit(user2, amount2 / 2);
+
+        assertEq(pair.balanceOf(address(join)), amount2 - (amount2 / 4) - (amount2 / 2));
+        assertEq(user2.getLPBalance(), (amount2 / 4) + (amount2 / 2));
+    }
+
+    function testFail_cage_join() public {
+        doCage();
+        user1.join(user1.getLPBalance());
+    }
+
+    function test_complex_fuzz(uint256 nruns, uint256 _seed) public {
+        nruns = nruns % 50;
+        seed = _seed;
+
+        Usr[3] memory users = [user1, user2, user3];
+
+        for (uint256 i = 0; i < nruns; i++) {
+            hevm.roll(block.number + rand() % 100);
+
+            uint256 action = rand() % 2;
+            uint256 u = rand() % 3;
+            Usr user = users[u];
+            if (action == 0) {
+                // Join
+                if (user.getLPBalance() == 0) continue;
+
+                uint256 amount = rand() % (user.getLPBalance() + 1);
+                log_named_uint("user", u);
+                log_named_string("action", "join");
+                log_named_uint("amount", amount);
+                doJoin(user, amount);
+            } else {
+                // Exit
+                if (user.gems() == 0) continue;
+
+                if (rand() % 4 == 0) {
+                    // 25% chance of flee
+                    log_named_uint("user", u);
+                    log_named_string("action", "flee");
+                    doFlee(user);
+                } else {
+                    uint256 amount = rand() % (user.gems() + 1);
+                    log_named_uint("user", u);
+                    log_named_string("action", "exit");
+                    log_named_uint("amount", amount);
+                    doExit(user, amount);
+                }
+            }
+        }
+    }
+    
 }

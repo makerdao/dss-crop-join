@@ -10,7 +10,9 @@ interface Hevm {
 }
 
 contract TestBase is DSTest {
+
     Hevm hevm = Hevm(HEVM_ADDRESS);
+    uint256 seed = 123;
 
     function add(uint x, uint y) public pure returns (uint z) {
         require((z = x + y) >= x, "ds-math-add-overflow");
@@ -35,4 +37,9 @@ contract TestBase is DSTest {
     function rdiv(uint256 x, uint256 y) public pure returns (uint256 z) {
         z = mul(x, RAY) / y;
     }
+    function rand() public returns (uint256) {
+        seed = 1103515245 * seed + 12345;
+        return seed;
+    }
+
 }
