@@ -54,6 +54,7 @@ contract SushiJoin is CropJoin {
 
         ERC20(gem_).approve(masterchef_, uint256(-1));
         wards[msg.sender] = 1;
+        emit Rely(msg.sender);
     }
     function nav() public override returns (uint256) {
         return total;
