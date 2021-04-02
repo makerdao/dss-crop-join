@@ -28,7 +28,7 @@ contract SushiJoin is CropJoin {
         emit Deny(usr);
     }
     modifier auth {
-        require(wards[msg.sender] == 1, "GemJoin/not-authorized");
+        require(wards[msg.sender] == 1, "SushiJoin/not-authorized");
         _;
     }
 
