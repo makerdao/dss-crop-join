@@ -160,5 +160,4 @@ contract CropJoin {
 
         emit Tack(src, dst, wad);
     }
-
 }

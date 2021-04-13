@@ -62,9 +62,11 @@ contract SushiJoin is CropJoin {
         wards[msg.sender] = 1;
         live = true;
     }
+
     function nav() public override returns (uint256) {
         return total;
     }
+
     function crop() internal override returns (uint256) {
         if (live) {
             // withdraw of 0 will give us only the rewards
@@ -72,17 +74,20 @@ contract SushiJoin is CropJoin {
         }
         return super.crop();
     }
+
     function join(uint256 val) public override {
         require(live, "SushiJoin/not-live");
         super.join(val);
         masterchef.deposit(pid, val);
     }
+
     function exit(uint256 val) public override {
         if (live) {
             masterchef.withdraw(pid, val);
         }
         super.exit(val);
     }
+
     function flee() public override {
         if (live) {
             uint256 val = vat.gem(ilk, msg.sender);
@@ -90,6 +95,7 @@ contract SushiJoin is CropJoin {
         }
         super.flee();
     }
+
     function cage() external auth {
         masterchef.emergencyWithdraw(pid);
         live = false;
