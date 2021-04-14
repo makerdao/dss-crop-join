@@ -27,12 +27,12 @@ contract Usr {
         adapter = join_;
         pair = pair_;
 
-        vat = adapter.vat();
+        vat = VatAbstract(address(adapter.vat()));
         masterchef = adapter.masterchef();
         wbtc = ERC20(pair.token0());
         weth = ERC20(pair.token1());
         pid = adapter.pid();
-        
+
         pair.approve(address(adapter), uint(-1));
         pair.approve(address(masterchef), uint(-1));
     }
@@ -305,7 +305,7 @@ contract SushiTest is TestBase {
         join.cage();
 
         // Should not take the rewards, only the actual LP token
-        assertEq(unclaimedAdapterRewards(), 0); 
+        assertEq(unclaimedAdapterRewards(), 0);
         assertEq(sushi.balanceOf(address(join)), prewards);
         assertEq(pair.balanceOf(address(join)), join.total());
     }
@@ -361,7 +361,7 @@ contract SushiTest is TestBase {
         hevm.roll(block.number + wait2);
 
         doExit(user1, amount1 / 4);
-        
+
         hevm.roll(block.number + wait3);
 
         doExit(user2, amount2 / 3);
@@ -547,5 +547,5 @@ contract SushiTest is TestBase {
             }
         }
     }
-    
+
 }
