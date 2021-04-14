@@ -201,7 +201,7 @@ contract SushiTest is TestBase {
         }
         assertEq(join.total(), ptotal + amount);
         assertEq(usr.stake(), pstake + amount);
-        assertEq(usr.crops(), rmul(usr.stake(), join.share()));
+        assertEq(usr.crops(), rmulup(usr.stake(), join.share()));
         assertEq(usr.gems(), pgems + amount);
         assertEq(pair.balanceOf(address(join)), 0);
         assertEq(unclaimedAdapterRewards(), 0);
@@ -234,7 +234,7 @@ contract SushiTest is TestBase {
 
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), pstake - amount);
-        assertEq(usr.crops(), rmul(usr.stake(), join.share()));
+        assertEq(usr.crops(), rmulup(usr.stake(), join.share()));
         assertEq(usr.gems(), pgems - amount);
         if (join.live()) {
             uint256 sushiToUser = 0;

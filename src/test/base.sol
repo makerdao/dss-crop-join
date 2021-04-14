@@ -23,6 +23,9 @@ contract TestBase is DSTest {
     function mul(uint x, uint y) public pure returns (uint z) {
         require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
     }
+    function divup(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        z = add(x, sub(y, 1)) / y;
+    }
     uint256 constant WAD  = 10 ** 18;
     function wmul(uint x, uint y) public pure returns (uint z) {
         z = mul(x, y) / WAD;
@@ -30,9 +33,15 @@ contract TestBase is DSTest {
     function wdiv(uint x, uint y) public pure returns (uint z) {
         z = mul(x, WAD) / y;
     }
+    function wdivup(uint256 x, uint256 y) public pure returns (uint256 z) {
+        z = divup(mul(x, WAD), y);
+    }
     uint256 constant RAY  = 10 ** 27;
     function rmul(uint256 x, uint256 y) public pure returns (uint256 z) {
         z = mul(x, y) / RAY;
+    }
+    function rmulup(uint256 x, uint256 y) public pure returns (uint256 z) {
+        z = divup(mul(x, y), RAY);
     }
     function rdiv(uint256 x, uint256 y) public pure returns (uint256 z) {
         z = mul(x, RAY) / y;
