@@ -107,7 +107,7 @@ contract Usr {
 }
 
 // Mainnet tests against SushiSwap
-contract SushiTest is TestBase {
+contract SushiIntegrationTest is TestBase {
 
     SushiLPLike pair;
     ERC20 sushi;
@@ -191,7 +191,8 @@ contract SushiTest is TestBase {
 
         uint256 sushiToUser = 0;
         if (ptotal > 0) {
-            sushiToUser = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal)) - pcrops;
+            uint256 newCrops = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal));
+            if (newCrops > pcrops) sushiToUser = newCrops - pcrops;
         }
         assertEq(usr.sushi(), psushi + sushiToUser);
         if (join.total() > 0) {
@@ -239,7 +240,8 @@ contract SushiTest is TestBase {
         if (join.live()) {
             uint256 sushiToUser = 0;
             if (ptotal > 0) {
-                sushiToUser = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal)) - pcrops;
+                uint256 newCrops = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal));
+                if (newCrops > pcrops) sushiToUser = newCrops - pcrops;
             }
             assertEq(usr.sushi(), psushi + sushiToUser);
             if (join.total() > 0) {

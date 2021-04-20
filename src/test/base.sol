@@ -9,6 +9,14 @@ interface Hevm {
     function load(address,bytes32) external returns (bytes32);
 }
 
+interface AuthLike {
+    function wards(address) external returns (uint256);
+}
+
+interface BalanceLike {
+    function balanceOf(address) external returns (uint256);
+}
+
 contract TestBase is DSTest {
 
     Hevm hevm = Hevm(HEVM_ADDRESS);
@@ -49,6 +57,72 @@ contract TestBase is DSTest {
     function rand() public returns (uint256) {
         seed = 1103515245 * seed + 12345;
         return seed;
+    }
+
+    function giveTokens(address token, uint256 amount) internal {
+        // Edge case - balance is already set for some reason
+        if (BalanceLike(token).balanceOf(address(this)) == amount) return;
+
+        for (int i = 0; i < 100; i++) {
+            // Scan the storage for the balance storage slot
+            bytes32 prevValue = hevm.load(
+                address(token),
+                keccak256(abi.encode(address(this), uint256(i)))
+            );
+            hevm.store(
+                address(token),
+                keccak256(abi.encode(address(this), uint256(i))),
+                bytes32(amount)
+            );
+            if (BalanceLike(token).balanceOf(address(this)) == amount) {
+                // Found it
+                return;
+            } else {
+                // Keep going after restoring the original value
+                hevm.store(
+                    address(token),
+                    keccak256(abi.encode(address(this), uint256(i))),
+                    prevValue
+                );
+            }
+        }
+
+        // We have failed if we reach here
+        assertTrue(false);
+    }
+
+    function giveAuthAccess (address _base, address target) internal {
+        AuthLike base = AuthLike(_base);
+
+        // Edge case - ward is already set
+        if (base.wards(target) == 1) return;
+
+        for (int i = 0; i < 100; i++) {
+            // Scan the storage for the ward storage slot
+            bytes32 prevValue = hevm.load(
+                address(base),
+                keccak256(abi.encode(target, uint256(i)))
+            );
+            hevm.store(
+                address(base),
+                keccak256(abi.encode(target, uint256(i))),
+                bytes32(uint256(1))
+            );
+            if (base.wards(target) == 1) {
+                // Found it
+                return;
+            } else {
+                // Keep going after restoring the original value
+                hevm.store(
+                    address(base),
+                    keccak256(abi.encode(target, uint256(i))),
+                    prevValue
+                );
+            }
+        }
+
+        // We have failed if we reach here
+        assertTrue(false);
     }
 
 }
