@@ -103,6 +103,9 @@ contract Usr {
     function hope(address usr) public {
         vat.hope(usr);
     }
+    function transfer(address to, uint val) public {
+        pair.transfer(to, val);
+    }
 
 }
 
@@ -418,6 +421,27 @@ contract SushiIntegrationTest is TestBase {
 
     function test_multi2_fuzz(uint256 amount1, uint256 amount2, uint256 wait1, uint256 wait2, uint256 wait3) public {
         multi2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), wait1 % 100000, wait2 % 100000, wait3 % 100000);
+    }
+
+    function test_join_exit_preexisting() public {
+        uint256 bal1 = user1.getLPBalance();
+        uint256 bal2 = user2.getLPBalance();
+        assertEq(bal1, bal2);
+        doJoin(user1, bal1);
+        doJoin(user2, bal2);
+
+        // Send some tokens directly to the adapter (it should ignore them)
+        user3.transfer(address(join), user3.getLPBalance());
+
+        hevm.roll(block.number + 100);
+
+        // Each user should get half the rewards
+        user1.exit(bal1);
+        assertTrue(sushi.balanceOf(address(join)) > 0);
+        user2.exit(bal2);
+        assertTrue(sushi.balanceOf(address(join)) < 10);    // Join adapter should only be dusty
+        assertTrue(sushi.balanceOf(address(user1)) > 0);
+        assertEq(sushi.balanceOf(address(user1)), sushi.balanceOf(address(user2)));
     }
 
     function test_flee() public {
