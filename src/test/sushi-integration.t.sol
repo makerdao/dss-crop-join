@@ -37,11 +37,17 @@ contract Usr {
         pair.approve(address(masterchef), uint(-1));
     }
 
+    function join(address usr, uint wad) public {
+        adapter.join(usr, wad);
+    }
     function join(uint wad) public {
-        adapter.join(wad);
+        adapter.join(address(this), wad);
+    }
+    function exit(address usr, uint wad) public {
+        adapter.exit(usr, wad);
     }
     function exit(uint wad) public {
-        adapter.exit(wad);
+        adapter.exit(address(this), wad);
     }
     function crops() public view returns (uint256) {
         return adapter.crops(address(this));
@@ -59,7 +65,7 @@ contract Usr {
         return adapter.bonus().balanceOf(address(this));
     }
     function reap() public {
-        adapter.join(0);
+        adapter.join(address(this), 0);
     }
     function flee() public {
         adapter.flee();
