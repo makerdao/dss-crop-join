@@ -103,6 +103,12 @@ contract Usr {
     function hope(address usr) public {
         vat.hope(usr);
     }
+    function cage() public {
+        adapter.cage();
+    }
+    function cage(uint256 value, string memory signature, bytes memory data, uint256 eta) public {
+        adapter.cage(value, signature, data, eta);
+    }
     function transfer(address to, uint val) public {
         pair.transfer(to, val);
     }
@@ -118,6 +124,8 @@ contract SushiIntegrationTest is TestBase {
     VatAbstract vat;
     bytes32 ilk = "SUSHIWBTCETH-A";
     SushiJoin join;
+    address migrator;
+    TimelockLike timelock;
 
     Usr user1;
     Usr user2;
@@ -130,6 +138,8 @@ contract SushiIntegrationTest is TestBase {
         pair = SushiLPLike(0xCEfF51756c56CeFFCA006cD410B03FFC46dd3a58);
         sushi = ERC20(0x6B3595068778DD592e39A122f4f5a5cF09C90fE2);
         masterchef = MasterChefLike(0xc2EdaD668740f1aA35E4D8f227fB8E17dcA888Cd);
+        migrator = 0xb0BF8BcCDb1617084Ebc220CB1dDBaA183f5C858;
+        timelock = TimelockLike(0x9a8541Ddf3a932a9A922B607e9CF7301f1d47bD1);
 
         // Give this contract admin access on the vat
         hevm.store(
@@ -152,7 +162,7 @@ contract SushiIntegrationTest is TestBase {
         }
         assertTrue(pid != uint(-1));
 
-        join = new SushiJoin(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid);
+        join = new SushiJoin(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, address(timelock));
         vat.rely(address(join));
         user1 = new Usr(hevm, join, pair);
         user2 = new Usr(hevm, join, pair);
@@ -574,4 +584,164 @@ contract SushiIntegrationTest is TestBase {
         }
     }
 
+    function testFail_cage_no_auth() public {
+        user1.cage();
+    }
+
+    function test_cage_owner_changes() public {
+        // user2 attempts to puts themself in control of the pool
+        hevm.store(
+            address(masterchef),
+            bytes32(uint256(0)),
+            bytes32(uint256(address(user2)))
+        );
+
+        // Anyone can cage
+        user1.cage();
+        assertTrue(!join.live());
+    }
+
+    function test_cage_migrator_changes() public {
+        // Migrator is changed to some other contract
+        hevm.store(
+            address(masterchef),
+            bytes32(uint256(5)),
+            bytes32(uint256(address(user2)))
+        );
+
+        // Anyone can cage
+        user1.cage();
+        assertTrue(!join.live());
+    }
+
+    function test_cage_queued_change1() public {
+        // Set this contract as admin of the timelock
+        hevm.store(
+            address(timelock),
+            bytes32(uint256(0)),
+            bytes32(uint256(address(this)))
+        );
+
+        // Queue up a malicious transaction
+        timelock.queueTransaction(
+            address(masterchef),
+            0,
+            "",
+            abi.encodeWithSelector(MasterChefLike.setMigrator.selector, [address(user2)]),
+            block.timestamp + timelock.delay()
+        );
+
+        // Anyone can cage
+        user1.cage(
+            0,
+            "",
+            abi.encodeWithSelector(MasterChefLike.setMigrator.selector, [address(user2)]),
+            block.timestamp + timelock.delay()
+        );
+        assertTrue(!join.live());
+    }
+
+    function test_cage_queued_change2() public {
+        // Set this contract as admin of the timelock
+        hevm.store(
+            address(timelock),
+            bytes32(uint256(0)),
+            bytes32(uint256(address(this)))
+        );
+
+        // Queue up a malicious transaction
+        timelock.queueTransaction(
+            address(masterchef),
+            0,
+            "transferOwnership(address)",
+            abi.encode(address(user2)),
+            block.timestamp + timelock.delay()
+        );
+
+        // Anyone can cage
+        user1.cage(
+            0,
+            "transferOwnership(address)",
+            abi.encode(address(user2)),
+            block.timestamp + timelock.delay()
+        );
+        assertTrue(!join.live());
+    }
+
+    function testFail_cage_queued_irrelevant_change() public {
+        // Set this contract as admin of the timelock
+        hevm.store(
+            address(timelock),
+            bytes32(uint256(0)),
+            bytes32(uint256(address(this)))
+        );
+
+        // Queue up a safe transaction such as adjusting the pool allocation amount
+        timelock.queueTransaction(
+            address(masterchef),
+            0,
+            "set(uint256,uint256,bool)",
+            abi.encode(join.pid(), uint256(0), false),
+            block.timestamp + timelock.delay()
+        );
+
+        // Should not be able to cage
+        user1.cage(
+            0,
+            "set(uint256,uint256,bool)",
+            abi.encode(join.pid(), uint256(0), false),
+            block.timestamp + timelock.delay()
+        );
+    }
+
+    function test_cage_false_positive() public {
+        doJoin(user1, user1.getLPBalance());
+        hevm.warp(now + 1 days);
+        doJoin(user2, user2.getLPBalance());
+        hevm.warp(now + 1 days);
+
+        // Set this contract as admin of the timelock
+        hevm.store(
+            address(timelock),
+            bytes32(uint256(0)),
+            bytes32(uint256(address(this)))
+        );
+
+        // Queue up a benign transaction (set the owner to the same timelock)
+        timelock.queueTransaction(
+            address(masterchef),
+            0,
+            "transferOwnership(address)",
+            abi.encode(address(timelock)),
+            block.timestamp + timelock.delay()
+        );
+
+        // Anyone can cage
+        uint256 tokensInMasterchef = pair.balanceOf(address(masterchef));
+        assertEq(pair.balanceOf(address(join)), 0);
+        user1.cage(
+            0,
+            "transferOwnership(address)",
+            abi.encode(address(timelock)),
+            block.timestamp + timelock.delay()
+        );
+        assertTrue(!join.live());
+        assertEq(pair.balanceOf(address(join)), join.total());
+        assertEq(pair.balanceOf(address(masterchef)), tokensInMasterchef - join.total());
+
+        // User can still exit
+        doExit(user1, user1.getLPBalance());
+
+        hevm.warp(now + 3 days);
+
+        // Governance later decides to re-activate the adapter
+        join.uncage();
+        assertTrue(join.live());
+        assertEq(pair.balanceOf(address(join)), 0);
+        assertEq(pair.balanceOf(address(masterchef)), tokensInMasterchef);
+
+        // Users can join/exit freely again
+        doJoin(user1, user1.getLPBalance());
+        doExit(user1, user1.getLPBalance());
+    }
 }
