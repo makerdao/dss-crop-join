@@ -413,4 +413,101 @@ contract CropUnitTest is TestBase {
         assertEq(bonus.balanceOf(address(a)),  50e18, "a rewards alt");
         assertEq(bonus.balanceOf(address(b)), 150e18, "b rewards alt");
     }
+
+    function test_tack_share_differs() public {
+        /*
+            If share (cumulative bonus tokens per stake) changes, this affects
+            the adjustment that must be done to the crops of the src and dst
+            addresses in tack. Specifically:
+
+            crops[src] <-- crops[src] * (stake[src] - wad) / stake[src]
+            crops[dst] <-- crops[dst] + crops[src] * wad / stake[src]
+
+            where all RHS quantities are evaluated immediately prior to the call
+            to tack. It can be verified that this transfers pending rewards from
+            src to dst proportional to the fraction of src's stake that is
+            transferred.
+        */
+        (Usr a, Usr b) = init_user();  // each has 200 * 10^6 gem
+
+        a.join(100e6);
+        reward(address(adapter), 50e18);  // a has 50e18 pending rewards
+
+        b.join(100e6);  // modifies share
+
+        // half of a's internal gem transferred to b w/o a reaping
+        vat.flux(ilk, address(a), address(b), 50e18);
+
+        assertEq(adapter.stake(address(a)), 100e18);
+        assertEq(adapter.stake(address(b)), 100e18);
+        assertEq(adapter.crops(address(a)), 0);
+        assertEq(adapter.crops(address(b)), 50e18);
+        adapter.tack(address(a), address(b), 50e18);
+        assertEq(adapter.stake(address(a)),  50e18);
+        assertEq(adapter.stake(address(b)), 150e18);
+        assertEq(adapter.crops(address(a)), 0);
+        assertEq(adapter.crops(address(b)), 50e18);
+
+        // both collect rewards, which are now split equally
+
+        assertEq(bonus.balanceOf(address(a)), 0);
+        a.exit(0);
+        assertEq(bonus.balanceOf(address(a)), 25e18);
+
+        assertEq(bonus.balanceOf(address(b)), 0);
+        b.exit(0);
+        assertEq(bonus.balanceOf(address(b)), 25e18);
+
+        // That wasn't too interesting since crops(a) started at zero.
+        // Let's do some more operations with a non-zero share value.
+
+        // 1/4 or 50e18 to a, 3/4 or 150e18 to b
+        reward(address(adapter), 200e18);  // make it Rain
+
+        b.join(100e6);  // modifies share
+        assertEq(adapter.share(), 15 * RAY / 10);  // share is ray(1.5)
+
+        // transfer 3/5 of a's internal gem to b w/o a reaping
+        vat.flux(ilk, address(a), address(b), 30e18);
+
+        assertEq(adapter.stake(address(a)),  50e18);
+        assertEq(adapter.stake(address(b)), 250e18);
+        assertEq(adapter.crops(address(a)),  25e18);
+        assertEq(adapter.crops(address(b)), 375e18);
+        adapter.tack(address(a), address(b), 30e18);
+        assertEq(adapter.stake(address(a)),  20e18);
+        assertEq(adapter.stake(address(b)), 280e18);
+        assertEq(adapter.crops(address(a)),  10e18);
+        assertEq(adapter.crops(address(b)), 390e18);
+
+        // when a exits, they get 2/5 of 50e18, i.e. 20e18
+        uint256 preBonusBal = bonus.balanceOf(address(a));
+        a.exit(0);
+        uint256 diff = sub(bonus.balanceOf(address(a)), preBonusBal);
+        assertEq(diff, 20e18);
+
+        // when b exits, they get the 3/5 of 50e18 rewards transferred from a
+        preBonusBal = bonus.balanceOf(address(b));
+        b.exit(0);
+        diff = sub(bonus.balanceOf(address(b)), preBonusBal);
+        assertEq(diff, 30e18);
+
+        // ensure both a and b can exit completely, with their full stakes
+
+        uint256 preGemBal = gem.balanceOf(address(a));
+        preBonusBal = bonus.balanceOf(address(a));
+        a.exit(20e6);
+        diff = sub(gem.balanceOf(address(a)), preGemBal);
+        assertEq(diff, 20e6);
+        assertEq(adapter.stake(address(a)), 0);
+        assertEq(bonus.balanceOf(address(a)), preBonusBal);
+
+        preGemBal = gem.balanceOf(address(b));
+        preBonusBal = bonus.balanceOf(address(b));
+        b.exit(280e6);
+        diff = sub(gem.balanceOf(address(b)), preGemBal);
+        assertEq(diff, 280e6);
+        assertEq(adapter.stake(address(b)), 0);
+        assertEq(bonus.balanceOf(address(b)), preBonusBal);
+    }
 }
