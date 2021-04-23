@@ -111,32 +111,32 @@ contract CropJoin {
         stock = bonus.balanceOf(address(this));
     }
 
-    function join(address usr, uint256 val) public virtual {
+    function join(address urn, uint256 val) public virtual {
         uint256 wad = wdiv(mul(val, to18ConversionFactor), nps());
         require(int256(wad) >= 0);  // Overflow check for int256(wad) cast below
 
-        harvest(usr, usr);
+        harvest(urn, urn);
         
         if (wad > 0) {
             require(gem.transferFrom(msg.sender, address(this), val));
-            vat.slip(ilk, usr, int256(wad));
+            vat.slip(ilk, urn, int256(wad));
 
             total = add(total, wad);
-            stake[usr] = add(stake[usr], wad);
+            stake[urn] = add(stake[urn], wad);
         }
-        crops[usr] = rmulup(stake[usr], share);
+        crops[urn] = rmulup(stake[urn], share);
 
         emit Join(val);
     }
 
-    function exit(address usr, uint256 val) public virtual {
+    function exit(address guy, uint256 val) public virtual {
         uint256 wad = wdivup(mul(val, to18ConversionFactor), nps());
         require(int256(wad) >= 0);  // Overflow check for int256(wad) cast below
 
-        harvest(msg.sender, usr);
+        harvest(msg.sender, guy);
 
         if (wad > 0) {
-            require(gem.transfer(usr, val));
+            require(gem.transfer(guy, val));
             vat.slip(ilk, msg.sender, -int256(wad));
 
             total = sub(total, wad);
