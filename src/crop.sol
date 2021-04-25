@@ -107,17 +107,19 @@ contract CropJoin {
 
         uint256 last = crops[from];
         uint256 curr = rmul(stake[from], share);
-        if (curr > last) require(bonus.transfer(to, sub(curr, last)));
+        if (curr > last) require(bonus.transfer(to, curr - last));
         stock = bonus.balanceOf(address(this));
     }
 
     function join(address urn, uint256 val) public virtual {
-        uint256 wad = wdiv(mul(val, to18ConversionFactor), nps());
-        require(int256(wad) >= 0);  // Overflow check for int256(wad) cast below
-
         harvest(urn, urn);
-        
-        if (wad > 0) {
+        if (val > 0) {
+            uint256 wad = wdiv(mul(val, to18ConversionFactor), nps());
+
+            // Overflow check for int256(wad) cast below
+            // Also enforces a non-zero wad
+            require(int256(wad) > 0);
+
             require(gem.transferFrom(msg.sender, address(this), val));
             vat.slip(ilk, urn, int256(wad));
 
@@ -125,17 +127,18 @@ contract CropJoin {
             stake[urn] = add(stake[urn], wad);
         }
         crops[urn] = rmulup(stake[urn], share);
-
         emit Join(val);
     }
 
     function exit(address guy, uint256 val) public virtual {
-        uint256 wad = wdivup(mul(val, to18ConversionFactor), nps());
-        require(int256(wad) >= 0);  // Overflow check for int256(wad) cast below
-
         harvest(msg.sender, guy);
+        if (val > 0) {
+            uint256 wad = wdivup(mul(val, to18ConversionFactor), nps());
 
-        if (wad > 0) {
+            // Overflow check for int256(wad) cast below
+            // Also enforces a non-zero wad
+            require(int256(wad) > 0);
+
             require(gem.transfer(guy, val));
             vat.slip(ilk, msg.sender, -int256(wad));
 
@@ -143,7 +146,6 @@ contract CropJoin {
             stake[msg.sender] = sub(stake[msg.sender], wad);
         }
         crops[msg.sender] = rmulup(stake[msg.sender], share);
-
         emit Exit(val);
     }
 
