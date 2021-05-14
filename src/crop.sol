@@ -151,6 +151,7 @@ contract CropJoin {
 
     function flee() public virtual {
         uint256 wad = vat.gem(ilk, msg.sender);
+        require(wad <= 2 ** 255);
         uint256 val = wmul(wmul(wad, nps()), toGemConversionFactor);
 
         require(gem.transfer(msg.sender, val));
