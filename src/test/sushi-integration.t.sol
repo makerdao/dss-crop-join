@@ -89,19 +89,39 @@ contract Usr {
     function tack(address src, address dst, uint256 wad) public {
         adapter.tack(src, dst, wad);
     }
+    function giveTokens(ERC20 token, uint256 amount) internal {
+        // Edge case - balance is already set for some reason
+        if (token.balanceOf(address(this)) == amount) return;
+
+        for (uint256 i = 0; i < 200; i++) {
+            // Scan the storage for the balance storage slot
+            bytes32 prevValue = hevm.load(
+                address(token),
+                keccak256(abi.encode(address(this), uint256(i)))
+            );
+            hevm.store(
+                address(token),
+                keccak256(abi.encode(address(this), uint256(i))),
+                bytes32(amount)
+            );
+            if (token.balanceOf(address(this)) == amount) {
+                // Found it
+                return;
+            } else {
+                // Keep going after restoring the original value
+                hevm.store(
+                    address(token),
+                    keccak256(abi.encode(address(this), uint256(i))),
+                    prevValue
+                );
+            }
+        }
+    }
     function set_wbtc(uint val) internal {
-        hevm.store(
-            address(wbtc),
-            keccak256(abi.encode(address(this), uint256(0))),
-            bytes32(uint(val))
-        );
+        giveTokens(wbtc, val);
     }
     function set_weth(uint val) internal {
-        hevm.store(
-            address(weth),
-            keccak256(abi.encode(address(this), uint256(3))),
-            bytes32(uint(val))
-        );
+        giveTokens(weth, val);
     }
     function mintLPTokens(uint wbtcVal, uint wethVal) public {
         set_wbtc(wbtcVal);
@@ -114,10 +134,10 @@ contract Usr {
         return pair.balanceOf(address(this));
     }
     function depositMasterchef(uint256 amount) public {
-        masterchef.deposit(pid, amount);
+        masterchef.deposit(pid, amount, address(this));
     }
     function withdrawMasterchef(uint256 amount) public {
-        masterchef.withdraw(pid, amount);
+        masterchef.withdraw(pid, amount, address(this));
     }
     function getMasterchefDepositAmount() public view returns (uint256 amount) {
         (amount,) = masterchef.userInfo(pid, address(this));
@@ -135,6 +155,11 @@ contract Usr {
         pair.transfer(to, val);
     }
 
+    // Include this callback to prevent error on rewards change check
+    function onSushiReward(uint256 pid, address user, address recipient, uint256 sushiAmount, uint256 newLpAmount) external {
+
+    }
+
 }
 
 // Mainnet tests against SushiSwap
@@ -147,6 +172,7 @@ contract SushiIntegrationTest is TestBase {
     bytes32 ilk = "SUSHIWBTCETH-A";
     SushiJoin join;
     address migrator;
+    address rewarder;
     TimelockLike timelock;
 
     Usr user1;
@@ -157,11 +183,20 @@ contract SushiIntegrationTest is TestBase {
 
     function setUp() public {
         vat = VatAbstract(0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B);
-        pair = SushiLPLike(0xCEfF51756c56CeFFCA006cD410B03FFC46dd3a58);
+        pair = SushiLPLike(0xC3f279090a47e80990Fe3a9c30d24Cb117EF91a8);
         sushi = ERC20(0x6B3595068778DD592e39A122f4f5a5cF09C90fE2);
-        masterchef = MasterChefLike(0xc2EdaD668740f1aA35E4D8f227fB8E17dcA888Cd);
-        migrator = 0xb0BF8BcCDb1617084Ebc220CB1dDBaA183f5C858;
+        masterchef = MasterChefLike(0xEF0881eC094552b2e128Cf945EF17a6752B4Ec5d);
+        migrator = address(0);
+        rewarder = address(0);
         timelock = TimelockLike(0x9a8541Ddf3a932a9A922B607e9CF7301f1d47bD1);
+
+        // FIXME - this needs to be removed when owner is actually set
+        hevm.store(
+            address(masterchef),
+            0,
+            bytes32(uint256(address(timelock)))
+        );
+        assertEq(masterchef.owner(), address(timelock));
 
         // Give this contract admin access on the vat
         hevm.store(
@@ -175,7 +210,7 @@ contract SushiIntegrationTest is TestBase {
         uint numPools = masterchef.poolLength();
         uint pid = uint(-1);
         for (uint i = 0; i < numPools; i++) {
-            (address lpToken,,,) = masterchef.poolInfo(i);
+            address lpToken = masterchef.lpToken(i);
             if (lpToken == address(pair)) {
                 pid = i;
 
@@ -184,7 +219,7 @@ contract SushiIntegrationTest is TestBase {
         }
         assertTrue(pid != uint(-1));
 
-        join = new SushiJoin(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, address(timelock));
+        join = new SushiJoin(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, rewarder, address(timelock));
         vat.rely(address(join));
         user1 = new Usr(hevm, join, pair);
         user2 = new Usr(hevm, join, pair);
@@ -229,9 +264,9 @@ contract SushiIntegrationTest is TestBase {
             uint256 newCrops = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal));
             if (newCrops > pcrops) sushiToUser = newCrops - pcrops;
         }
-        assertEq(usr.sushi(), psushi + sushiToUser);
+        assertEqApprox(usr.sushi(), psushi + sushiToUser, 1);
         if (join.total() > 0) {
-            assertEq(join.stock(), pstock + punclaimedRewards - sushiToUser);
+            assertEqApprox(join.stock(), pstock + punclaimedRewards - sushiToUser, 1);
         } else {
             assertTrue(join.stock() <= 1);  // May be a slight rounding error
         }
@@ -240,7 +275,7 @@ contract SushiIntegrationTest is TestBase {
         assertEq(usr.crops(), rmulup(usr.stake(), join.share()));
         assertEq(usr.gems(), pgems + amount);
         assertEq(pair.balanceOf(address(join)), 0);
-        assertEq(unclaimedAdapterRewards(), 0);
+        assertEqApprox(unclaimedAdapterRewards(), 0, 1);
         assertEq(masterchefDepositAmount(), join.total());
         if (ptotal > 0) {
             assertEq(join.share(), pshare + rdiv(punclaimedRewards, ptotal));
@@ -278,9 +313,9 @@ contract SushiIntegrationTest is TestBase {
                 uint256 newCrops = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal));
                 if (newCrops > pcrops) sushiToUser = newCrops - pcrops;
             }
-            assertEq(usr.sushi(), psushi + sushiToUser);
+            assertEqApprox(usr.sushi(), psushi + sushiToUser, 1);
             if (join.total() > 0) {
-                assertEq(join.stock(), pstock + punclaimedRewards - sushiToUser);
+                assertEqApprox(join.stock(), pstock + punclaimedRewards - sushiToUser, 1);
             } else {
                 assertTrue(join.stock() <= dust);  // May be a slight rounding error
             }
@@ -297,7 +332,7 @@ contract SushiIntegrationTest is TestBase {
             assertEq(join.share(), pshare);
             assertEq(masterchefDepositAmount(), 0);
             assertEq(pair.balanceOf(address(join)), join.total());
-            assertEq(unclaimedAdapterRewards(), punclaimedRewards);
+            assertEqApprox(unclaimedAdapterRewards(), punclaimedRewards, 1);
             assertEq(usr.sushi(), psushi);
         }
     }
@@ -331,7 +366,7 @@ contract SushiIntegrationTest is TestBase {
         }
         assertEq(join.stock(), pstock);
         assertEq(join.share(), pshare);
-        assertEq(unclaimedAdapterRewards(), punclaimedRewards);
+        assertEqApprox(unclaimedAdapterRewards(), punclaimedRewards, 1);
         assertEq(usr.sushi(), psushi);
     }
     function doCage() public {
@@ -617,6 +652,7 @@ contract SushiIntegrationTest is TestBase {
             bytes32(uint256(0)),
             bytes32(uint256(address(user2)))
         );
+        assertEq(masterchef.owner(), address(user2));
 
         // Anyone can cage
         user1.cage();
@@ -627,9 +663,24 @@ contract SushiIntegrationTest is TestBase {
         // Migrator is changed to some other contract
         hevm.store(
             address(masterchef),
-            bytes32(uint256(5)),
+            bytes32(uint256(2)),
             bytes32(uint256(address(user2)))
         );
+        assertEq(masterchef.migrator(), address(user2));
+
+        // Anyone can cage
+        user1.cage();
+        assertTrue(!join.live());
+    }
+
+    function test_cage_rewarder_changes() public {
+        // Migrator is changed to some other contract
+        hevm.store(
+            address(masterchef),
+            bytes32(uint256(keccak256(abi.encode(5))) + join.pid()),
+            bytes32(uint256(address(user2)))
+        );
+        assertEq(masterchef.rewarder(join.pid()), address(user2));
 
         // Anyone can cage
         user1.cage();
@@ -661,6 +712,17 @@ contract SushiIntegrationTest is TestBase {
             block.timestamp + timelock.delay()
         );
         assertTrue(!join.live());
+
+        // Make sure this action can be executed and does what is expected (otherwise we have the wrong command)
+        hevm.warp(block.timestamp + timelock.delay());
+        timelock.executeTransaction(
+            address(masterchef),
+            0,
+            "",
+            abi.encodeWithSelector(MasterChefLike.setMigrator.selector, [address(user2)]),
+            block.timestamp
+        );
+        assertEq(masterchef.migrator(), address(user2));
     }
 
     function test_cage_queued_change2() public {
@@ -675,19 +737,68 @@ contract SushiIntegrationTest is TestBase {
         timelock.queueTransaction(
             address(masterchef),
             0,
-            "transferOwnership(address)",
-            abi.encode(address(user2)),
+            "transferOwnership(address,bool,bool)",
+            abi.encode(address(user2),true,false),
             block.timestamp + timelock.delay()
         );
 
         // Anyone can cage
         user1.cage(
             0,
-            "transferOwnership(address)",
-            abi.encode(address(user2)),
+            "transferOwnership(address,bool,bool)",
+            abi.encode(address(user2),true,false),
             block.timestamp + timelock.delay()
         );
         assertTrue(!join.live());
+
+        // Make sure this action can be executed and does what is expected (otherwise we have the wrong command)
+        hevm.warp(block.timestamp + timelock.delay());
+        timelock.executeTransaction(
+            address(masterchef),
+            0,
+            "transferOwnership(address,bool,bool)",
+            abi.encode(address(user2),true,false),
+            block.timestamp
+        );
+        assertEq(masterchef.owner(), address(user2));
+    }
+
+    function test_cage_queued_change3() public {
+        // Set this contract as admin of the timelock
+        hevm.store(
+            address(timelock),
+            bytes32(uint256(0)),
+            bytes32(uint256(address(this)))
+        );
+
+        // Queue up a malicious transaction - changing the rewards callback contract
+        timelock.queueTransaction(
+            address(masterchef),
+            0,
+            "",
+            abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), true),
+            block.timestamp + timelock.delay()
+        );
+
+        // Anyone can cage
+        user1.cage(
+            0,
+            "",
+            abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), true),
+            block.timestamp + timelock.delay()
+        );
+        assertTrue(!join.live());
+
+        // Make sure this action can be executed and does what is expected (otherwise we have the wrong command)
+        hevm.warp(block.timestamp + timelock.delay());
+        timelock.executeTransaction(
+            address(masterchef),
+            0,
+            "",
+            abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), true),
+            block.timestamp
+        );
+        assertEq(masterchef.rewarder(join.pid()), address(user2));
     }
 
     function testFail_cage_queued_irrelevant_change() public {
@@ -702,16 +813,16 @@ contract SushiIntegrationTest is TestBase {
         timelock.queueTransaction(
             address(masterchef),
             0,
-            "set(uint256,uint256,bool)",
-            abi.encode(join.pid(), uint256(0), false),
+            "set(uint256,uint256,address,bool)",
+            abi.encode(join.pid(), uint256(0), address(user2), false),
             block.timestamp + timelock.delay()
         );
 
         // Should not be able to cage
         user1.cage(
             0,
-            "set(uint256,uint256,bool)",
-            abi.encode(join.pid(), uint256(0), false),
+            "set(uint256,uint256,address,bool)",
+            abi.encode(join.pid(), uint256(0), address(user2), false),
             block.timestamp + timelock.delay()
         );
     }
@@ -733,8 +844,8 @@ contract SushiIntegrationTest is TestBase {
         timelock.queueTransaction(
             address(masterchef),
             0,
-            "transferOwnership(address)",
-            abi.encode(address(timelock)),
+            "transferOwnership(address,bool,bool)",
+            abi.encode(address(timelock), true, false),
             block.timestamp + timelock.delay()
         );
 
@@ -743,8 +854,8 @@ contract SushiIntegrationTest is TestBase {
         assertEq(pair.balanceOf(address(join)), 0);
         user1.cage(
             0,
-            "transferOwnership(address)",
-            abi.encode(address(timelock)),
+            "transferOwnership(address,bool,bool)",
+            abi.encode(address(timelock), true, false),
             block.timestamp + timelock.delay()
         );
         assertTrue(!join.live());

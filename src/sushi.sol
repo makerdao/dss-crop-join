@@ -19,23 +19,28 @@ pragma solidity 0.6.12;
 import "./crop.sol";
 
 interface MasterChefLike {
-    function pendingSushi(uint256 _pid, address _user) external view returns (uint256);
-    function userInfo(uint256 _pid, address _user) external view returns (uint256, uint256);
-    function deposit(uint256 _pid, uint256 _amount) external;
-    function withdraw(uint256 _pid, uint256 _amount) external;
-    function poolInfo(uint256 _pid) external view returns (address, uint256, uint256, uint256);
+    function pendingSushi(uint256 pid, address user) external view returns (uint256);
+    function userInfo(uint256 pid, address user) external view returns (uint256 amount, uint256 rewardDebt);
+    function deposit(uint256 pid, uint256 amount, address to) external;
+    function withdraw(uint256 pid, uint256 amount, address to) external;
+    function harvest(uint256 pid, address to) external;
+    function poolInfo(uint256 pid) external view returns (uint128 accSushiPerShare, uint64 lastRewardBlock, uint64 allocPoint);
+    function lpToken(uint256 pid) external view returns (address);
     function poolLength() external view returns (uint256);
-    function sushi() external view returns (address);
+    function SUSHI() external view returns (address);
     function migrator() external view returns (address);
     function owner() external view returns (address);
-    function emergencyWithdraw(uint256 _pid) external;
-    function transferOwnership(address newOwner) external;
-    function setMigrator(uint256 _pid) external;
+    function rewarder(uint256) external view returns (address);
+    function emergencyWithdraw(uint256 pid, address to) external;
+    function transferOwnership(address newOwner, bool direct, bool renounce) external;
+    function setMigrator(address) external;
+    function set(uint256 pid, uint256 allocPoint, address rewarder, bool overwrite) external;
 }
 
 interface TimelockLike {
     function queuedTransactions(bytes32) external view returns (bool);
     function queueTransaction(address,uint256,string memory,bytes memory,uint256) external;
+    function executeTransaction(address,uint256,string memory,bytes memory,uint256) payable external;
     function delay() external view returns (uint256);
 }
 
@@ -58,6 +63,7 @@ contract SushiJoin is CropJoin {
 
     MasterChefLike  immutable public masterchef;
     address                   public initialMigrator;
+    address                   public initialRewarder;
     TimelockLike              public timelockOwner;
     uint256                   public pid;
     bool                      public live;
@@ -86,21 +92,25 @@ contract SushiJoin is CropJoin {
         address masterchef_,
         uint256 pid_,
         address initialMigrator_,
+        address initialRewarder_,
         address timelockOwner_
     )
         public
         CropJoin(vat_, ilk_, gem_, bonus_)
     {
         // Sanity checks
-        (address lpToken, uint256 allocPoint,,) = MasterChefLike(masterchef_).poolInfo(pid_);
+        address lpToken = MasterChefLike(masterchef_).lpToken(pid_);
+        (,, uint64 allocPoint) = MasterChefLike(masterchef_).poolInfo(pid_);
         require(lpToken == gem_, "SushiJoin/pid-does-not-match-gem");
-        require(MasterChefLike(masterchef_).sushi() == bonus_, "SushiJoin/bonus-does-not-match-sushi");
+        require(MasterChefLike(masterchef_).SUSHI() == bonus_, "SushiJoin/bonus-does-not-match-sushi");
         require(allocPoint > 0, "SushiJoin/pool-not-active");
         require(MasterChefLike(masterchef_).migrator() == initialMigrator_, "SushiJoin/migrator-mismatch");
+        require(MasterChefLike(masterchef_).rewarder(pid_) == initialRewarder_, "SushiJoin/rewarder-mismatch");
         require(MasterChefLike(masterchef_).owner() == timelockOwner_, "SushiJoin/owner-mismatch");
 
         masterchef = MasterChefLike(masterchef_);
         initialMigrator = initialMigrator_;
+        initialRewarder = initialRewarder_;
         timelockOwner = TimelockLike(timelockOwner_);
         pid = pid_;
 
@@ -117,6 +127,7 @@ contract SushiJoin is CropJoin {
     }
     function file(bytes32 what, address data) external auth {
         if (what == "initialMigrator") initialMigrator = data;
+        else if (what == "initialRewarder") initialRewarder = data;
         else if (what == "timelockOwner") timelockOwner = TimelockLike(data);
         else revert("SushiJoin/file-unrecognized-param");
         emit File(what, data);
@@ -129,8 +140,7 @@ contract SushiJoin is CropJoin {
 
     function crop() internal override returns (uint256) {
         if (live) {
-            // withdraw of 0 will give us only the rewards
-            masterchef.withdraw(pid, 0);
+            masterchef.harvest(pid, address(this));
         }
         return super.crop();
     }
@@ -138,12 +148,12 @@ contract SushiJoin is CropJoin {
     function join(address usr, uint256 val) public override {
         require(live, "SushiJoin/not-live");
         super.join(usr, val);
-        masterchef.deposit(pid, val);
+        masterchef.deposit(pid, val, address(this));
     }
 
     function exit(address usr, uint256 val) public override {
         if (live) {
-            masterchef.withdraw(pid, val);
+            masterchef.withdraw(pid, val, address(this));
         }
         super.exit(usr, val);
     }
@@ -151,7 +161,7 @@ contract SushiJoin is CropJoin {
     function flee() public override {
         if (live) {
             uint256 val = vat.gem(ilk, msg.sender);
-            masterchef.withdraw(pid, val);
+            masterchef.withdraw(pid, val, address(this));
         }
         super.flee();
     }
@@ -162,6 +172,7 @@ contract SushiJoin is CropJoin {
         require(
             wards[msg.sender] == 1 ||
             masterchef.migrator() != initialMigrator ||
+            masterchef.rewarder(pid) != initialRewarder ||
             masterchef.owner() != address(timelockOwner)
         , "SushiJoin/not-authorized");
 
@@ -186,19 +197,24 @@ contract SushiJoin is CropJoin {
         );
         require(
             selector == MasterChefLike.transferOwnership.selector ||
-            selector == MasterChefLike.setMigrator.selector
+            selector == MasterChefLike.setMigrator.selector ||
+            selector == MasterChefLike.set.selector
         , "SushiJoin/wrong-function");
+        if (selector == MasterChefLike.set.selector) {
+            uint8 overwrite = uint8(bytes(signature).length == 0 ? data[131] : data[127]) & 0x1;
+            require(overwrite == 1, "SushiJoin/bad-overwrite");
+        }
         bytes32 txHash = keccak256(abi.encode(masterchef, value, signature, data, eta));
         require(timelockOwner.queuedTransactions(txHash), "SushiJoin/invalid-hash");
 
         _cage();
     }
     function _cage() internal {
-        masterchef.emergencyWithdraw(pid);
+        masterchef.emergencyWithdraw(pid, address(this));
         live = false;
     }
     function uncage() external auth {
-        masterchef.deposit(pid, total);
+        masterchef.deposit(pid, total, address(this));
         live = true;
     }
 }
