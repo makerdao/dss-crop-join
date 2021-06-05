@@ -140,7 +140,8 @@ contract SushiJoin is CropJoin {
 
     function crop() internal override returns (uint256) {
         if (live) {
-            masterchef.harvest(pid, address(this));
+            // This can possibly fail if no rewards are owed, but that doesn't really matter
+            try masterchef.harvest(pid, address(this)) {} catch {}
         }
         return super.crop();
     }
