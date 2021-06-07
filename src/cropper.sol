@@ -413,7 +413,7 @@ contract CropClipper {
             _remove(id);
         } else if (tab == 0) {
             vat.flux(ilk, address(this), usr, lot);
-            crop.tack(address(this), usr, slice);  // Transfer rewards
+            crop.tack(address(this), usr, lot);  // Transfer rewards
             _remove(id);
         } else {
             sales[id].tab = tab;
