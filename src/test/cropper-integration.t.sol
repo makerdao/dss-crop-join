@@ -40,6 +40,13 @@ contract Abacus is Pip {
     }
 }
 
+contract UrnUsr is CropUsr {
+    constructor(CropJoin join_) public CropUsr(join_) {}
+    function frob(bytes32 ilk, int256 dink, int256 dart) external {
+        vat.frob(ilk, address(this), address(this), address(this), dink, dart);
+    }
+}
+
 contract CropperIntegrationTest is TestBase {
     Token gem;
     Token bonus;
@@ -49,50 +56,77 @@ contract CropperIntegrationTest is TestBase {
     Abacus abacus;
     bytes32 constant ILK = "GEM-A";
 
+    UrnUsr urnUsr;
+
     VatAbstract  vat;
     DogAbstract  dog;
     SpotAbstract spotter;
+
+    uint256 constant RAD = 10**45;
 
     function setUp() public {
         vat     =  VatAbstract(0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B);
         dog     =  DogAbstract(0x135954d155898D42C90D2a57824C690e0c7BEf1B);
         spotter = SpotAbstract(0x65C79fcB50Ca1594B025960e539eD7A9a6D434A3);
 
-        // Give this contract admin access on the vat
-        giveAuthAccess(address(vat), address(this));
-        assertEq(vat.wards(address(this)), 1);
+        giveAuthAccess(address(vat),     address(this));
+        giveAuthAccess(address(dog),     address(this));
+        giveAuthAccess(address(spotter), address(this));
 
         // Initialize GEM-A in the Vat
         vat.init(ILK);
-
-        // Give this contract admin access on the spotter
-        giveAuthAccess(address(spotter), address(this));
-        assertEq(spotter.wards(address(this)), 1);
+        vat.file(ILK, "line", 10**6 * RAD);
+        vat.file("Line", add(vat.Line(), 10**6 * RAD));  // Ensure there is room in the global debt ceiling
 
         // Initialize price feed
         pip = new Pip();
         pip.set(WAD);  // Initial price of $1 per gem
         spotter.file(ILK, "pip", address(pip));
-        spotter.file(ILK, "mat", 15 * RAY / 10);  // 150% collateralization ratio
+        spotter.file(ILK, "mat", 2 * RAY);  // 200% collateralization ratio
         spotter.poke(ILK);
 
         gem     = new Token(18, 10**6 * WAD);
         bonus   = new Token(18, 10**6 * WAD);
         join    = new CropJoin(address(vat), ILK, address(gem), address(bonus));
         cropper = new CropClipper(address(vat), address(spotter), address(dog), address(join));
+
+        // Auth setup
         cropper.rely(address(dog));
+        dog.rely(address(cropper));
+        vat.rely(address(join));
+
+        // Initialize GEM-A in the Dog
+        dog.file(ILK, "hole", 10**6 * RAD);
+        dog.file("Hole", add(dog.Hole(), 10**6 * RAD));
+        dog.file(ILK, "clip", address(cropper));
+        dog.file(ILK, "chop", 110 * WAD / 100);
 
         // Set up pricing
-        Abacus abacus = new Abacus();
+        abacus = new Abacus();
         abacus.set(pip.val());
         cropper.file("calc", address(abacus));
+
+        // Create Vault
+        urnUsr = new UrnUsr(join);
+        gem.transfer(address(urnUsr), 10**3 * WAD);
+        urnUsr.join(10**3 * WAD);
+        urnUsr.frob(ILK, int256(10**3 * WAD), int256(500 * WAD));  // Draw maximum possible debt
+
+        // Accrue rewards
+        bonus.transfer(address(join), 10**4 * WAD);  // 10 bonus tokens per joined gem
+
+        // Simulate fee collection; urnUsr's Vault becomes unsafe.
+        vat.fold(ILK, cropper.vow(), int256(RAY / 5));
     }
 
-    function test_kick() public {
-//        cropper.kick(tab, lot, usr, address(this));
+    function test_kick_via_bark() public {
+        assertEq(join.stake(address(urnUsr)), 10**3 * WAD);
+        assertEq(join.stake(address(cropper)), 0);
+        dog.bark(ILK, address(urnUsr), address(this));
+        assertEq(join.stake(address(urnUsr)), 0);
+        assertEq(join.stake(address(cropper)), 10**3 * WAD);
     }
 
-    function test_bark() public {}
     function test_take_all() public {}
     function test_take_return_collateral() public {}
     function test_take_multiple_calls() public {}
