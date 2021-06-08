@@ -20,6 +20,7 @@ import "dss-interfaces/Interfaces.sol";
 
 import "./base.sol";
 import "./crop-usr.sol";
+import "./token.sol";
 import "../crop.sol";
 
 contract MockVat {
@@ -46,36 +47,6 @@ contract MockVat {
         gem[ilk][dst] = add(gem[ilk][dst], wad);
     }
     function hope(address usr) external {}
-}
-
-contract Token {
-    uint8 public decimals;
-    mapping (address => uint) public balanceOf;
-    mapping (address => mapping (address => uint)) public allowance;
-    constructor(uint8 dec, uint wad) public {
-        decimals = dec;
-        balanceOf[msg.sender] = wad;
-    }
-    function transfer(address usr, uint wad) public returns (bool) {
-        require(balanceOf[msg.sender] >= wad, "transfer/insufficient");
-        balanceOf[msg.sender] -= wad;
-        balanceOf[usr] += wad;
-        return true;
-    }
-    function transferFrom(address src, address dst, uint wad) public returns (bool) {
-        require(balanceOf[src] >= wad, "transferFrom/insufficient");
-        balanceOf[src] -= wad;
-        balanceOf[dst] += wad;
-        return true;
-    }
-    function mint(address dst, uint wad) public returns (uint) {
-        balanceOf[dst] += wad;
-    }
-    function approve(address usr, uint wad) public returns (bool) {
-    }
-    function mint(uint wad) public returns (uint) {
-        mint(msg.sender, wad);
-    }
 }
 
 contract CropUnitTest is TestBase {

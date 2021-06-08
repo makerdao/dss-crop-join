@@ -20,11 +20,40 @@ import "dss-interfaces/Interfaces.sol";
 
 import "./base.sol";
 import "./crop-usr.sol";
+import "./token.sol";
 import "../crop.sol";
 import "../cropper.sol";
 
 contract CropperIntegrationTest is TestBase {
-    function test_kick() public {}
+    Token gem;
+    Token bonus;
+    CropJoin join;
+    CropClipper cropper;
+    bytes32 constant ILK = "GEM-A";
+
+    VatAbstract vat;
+    DogAbstract dog;
+
+    function setUp() public {
+        vat = VatAbstract(0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B);
+        dog = DogAbstract(0x135954d155898D42C90D2a57824C690e0c7BEf1B);
+
+        // Give this contract admin access on the vat
+        hevm.store(
+            address(vat),
+            keccak256(abi.encode(address(this), uint256(0))),
+            bytes32(uint256(1))
+        );
+        assertEq(vat.wards(address(this)), 1);
+
+        // Initialize GEM-A in the Vat
+        vat.init(ILK);
+    }
+
+    function test_kick() public {
+//        cropper.kick(tab, lot, usr, address(this));
+    }
+
     function test_take_all() public {}
     function test_take_return_collateral() public {}
     function test_take_multiple_calls() public {}
