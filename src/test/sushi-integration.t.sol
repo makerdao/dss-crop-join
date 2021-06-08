@@ -187,7 +187,7 @@ contract SushiIntegrationTest is TestBase {
         sushi = ERC20(0x6B3595068778DD592e39A122f4f5a5cF09C90fE2);
         masterchef = MasterChefLike(0xEF0881eC094552b2e128Cf945EF17a6752B4Ec5d);
         migrator = address(0);
-        rewarder = address(0);
+        rewarder = 0x7519C93fC5073E15d89131fD38118D73A72370F8;
         timelock = TimelockLike(0x9a8541Ddf3a932a9A922B607e9CF7301f1d47bD1);
 
         // FIXME - this needs to be removed when owner is actually set

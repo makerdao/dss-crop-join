@@ -202,7 +202,7 @@ contract SushiJoin is CropJoin {
             selector == MasterChefLike.set.selector
         , "SushiJoin/wrong-function");
         if (selector == MasterChefLike.set.selector) {
-            uint8 overwrite = uint8(bytes(signature).length == 0 ? data[131] : data[127]) & 0x1;
+            uint8 overwrite = uint8(callData[131]) & 0x1;
             require(overwrite == 1, "SushiJoin/bad-overwrite");
         }
         bytes32 txHash = keccak256(abi.encode(masterchef, value, signature, data, eta));
