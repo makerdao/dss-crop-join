@@ -231,6 +231,14 @@ contract SushiIntegrationTest is TestBase {
         assertTrue(user1.getLPBalance() > 0);
         assertTrue(user2.getLPBalance() > 0);
         assertTrue(user3.getLPBalance() > 0);
+
+        // Set this contract as admin of the timelock
+        hevm.store(
+            address(timelock),
+            bytes32(uint256(0)),
+            bytes32(uint256(address(this)))
+        );
+        assertEq(timelock.admin(), address(this));
     }
 
     function unclaimedAdapterRewards() public view returns (uint256 amount) {
@@ -687,144 +695,104 @@ contract SushiIntegrationTest is TestBase {
         assertTrue(!join.live());
     }
 
-    function test_cage_queued_change1() public {
-        // Set this contract as admin of the timelock
-        hevm.store(
-            address(timelock),
-            bytes32(uint256(0)),
-            bytes32(uint256(address(this)))
-        );
+    function execute_dangerous_timelock_action(string memory signature, bytes memory data) internal {
+        uint256 t = block.timestamp + timelock.delay();
 
         // Queue up a malicious transaction
-        timelock.queueTransaction(
-            address(masterchef),
-            0,
-            "",
-            abi.encodeWithSelector(MasterChefLike.setMigrator.selector, [address(user2)]),
-            block.timestamp + timelock.delay()
-        );
+        timelock.queueTransaction(address(masterchef), 0, signature, data, t);
 
         // Anyone can cage
-        user1.cage(
-            0,
-            "",
-            abi.encodeWithSelector(MasterChefLike.setMigrator.selector, [address(user2)]),
-            block.timestamp + timelock.delay()
-        );
+        user1.cage(0, signature, data, t);
         assertTrue(!join.live());
 
-        // Make sure this action can be executed and does what is expected (otherwise we have the wrong command)
-        hevm.warp(block.timestamp + timelock.delay());
-        timelock.executeTransaction(
-            address(masterchef),
-            0,
-            "",
-            abi.encodeWithSelector(MasterChefLike.setMigrator.selector, [address(user2)]),
-            block.timestamp
-        );
+        // Execute the dangerous command
+        hevm.warp(t);
+        timelock.executeTransaction(address(masterchef), 0, signature, data, t);
+    }
+
+    function queue_safe_timelock_action(address target, string memory signature, bytes memory data, bool execute) internal {
+        uint256 t = block.timestamp + timelock.delay();
+
+        // Queue up a safe transaction
+        timelock.queueTransaction(target, 0, signature, data, t);
+
+        // Cage should fail
+        try user1.cage(0, signature, data, t) {
+            assertTrue(false);
+        } catch {}
+        assertTrue(join.live());
+
+        if (execute) {
+            // Execute the safe command
+            hevm.warp(t);
+            timelock.executeTransaction(target, 0, signature, data, t);
+        }
+    }
+
+    function test_cage_queued_dangerous_change_migrator1() public {
+        execute_dangerous_timelock_action("setMigrator(address)", abi.encode(address(user2)));
         assertEq(masterchef.migrator(), address(user2));
     }
 
-    function test_cage_queued_change2() public {
-        // Set this contract as admin of the timelock
-        hevm.store(
-            address(timelock),
-            bytes32(uint256(0)),
-            bytes32(uint256(address(this)))
-        );
+    function test_cage_queued_dangerous_change_migrator2() public {
+        execute_dangerous_timelock_action("", abi.encodeWithSelector(MasterChefLike.setMigrator.selector, address(user2)));
+        assertEq(masterchef.migrator(), address(user2));
+    }
 
-        // Queue up a malicious transaction
-        timelock.queueTransaction(
-            address(masterchef),
-            0,
-            "transferOwnership(address,bool,bool)",
-            abi.encode(address(user2),true,false),
-            block.timestamp + timelock.delay()
-        );
-
-        // Anyone can cage
-        user1.cage(
-            0,
-            "transferOwnership(address,bool,bool)",
-            abi.encode(address(user2),true,false),
-            block.timestamp + timelock.delay()
-        );
-        assertTrue(!join.live());
-
-        // Make sure this action can be executed and does what is expected (otherwise we have the wrong command)
-        hevm.warp(block.timestamp + timelock.delay());
-        timelock.executeTransaction(
-            address(masterchef),
-            0,
-            "transferOwnership(address,bool,bool)",
-            abi.encode(address(user2),true,false),
-            block.timestamp
-        );
+    function test_cage_queued_dangerous_change_owner1() public {
+        execute_dangerous_timelock_action("transferOwnership(address,bool,bool)", abi.encode(address(user2), true, false));
         assertEq(masterchef.owner(), address(user2));
     }
 
-    function test_cage_queued_change3() public {
-        // Set this contract as admin of the timelock
-        hevm.store(
-            address(timelock),
-            bytes32(uint256(0)),
-            bytes32(uint256(address(this)))
-        );
+    function test_cage_queued_dangerous_change_owner2() public {
+        execute_dangerous_timelock_action("", abi.encodeWithSelector(MasterChefLike.transferOwnership.selector, address(user2), true, false));
+        assertEq(masterchef.owner(), address(user2));
+    }
 
-        // Queue up a malicious transaction - changing the rewards callback contract
-        timelock.queueTransaction(
-            address(masterchef),
-            0,
-            "",
-            abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), true),
-            block.timestamp + timelock.delay()
-        );
-
-        // Anyone can cage
-        user1.cage(
-            0,
-            "",
-            abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), true),
-            block.timestamp + timelock.delay()
-        );
-        assertTrue(!join.live());
-
-        // Make sure this action can be executed and does what is expected (otherwise we have the wrong command)
-        hevm.warp(block.timestamp + timelock.delay());
-        timelock.executeTransaction(
-            address(masterchef),
-            0,
-            "",
-            abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), true),
-            block.timestamp
-        );
+    function test_cage_queued_dangerous_change_rewarder1() public {
+        execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), true));
         assertEq(masterchef.rewarder(join.pid()), address(user2));
     }
 
-    function testFail_cage_queued_irrelevant_change() public {
-        // Set this contract as admin of the timelock
-        hevm.store(
-            address(timelock),
-            bytes32(uint256(0)),
-            bytes32(uint256(address(this)))
-        );
+    function test_cage_queued_dangerous_change_rewarder2() public {
+        execute_dangerous_timelock_action("", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), true));
+        assertEq(masterchef.rewarder(join.pid()), address(user2));
+    }
 
-        // Queue up a safe transaction such as adjusting the pool allocation amount
-        timelock.queueTransaction(
-            address(masterchef),
-            0,
-            "set(uint256,uint256,address,bool)",
-            abi.encode(join.pid(), uint256(0), address(user2), false),
-            block.timestamp + timelock.delay()
-        );
+    function test_cage_queued_safe_change_diff_target() public {
+        queue_safe_timelock_action(address(user1), "setMigrator(address)", abi.encode(address(user2)), false);
+    }
 
-        // Should not be able to cage
-        user1.cage(
-            0,
-            "set(uint256,uint256,address,bool)",
-            abi.encode(join.pid(), uint256(0), address(user2), false),
-            block.timestamp + timelock.delay()
-        );
+    function test_cage_queued_safe_change_safe_function1() public {
+        queue_safe_timelock_action(address(masterchef), "add(uint256,address,address)", abi.encode(100, address(pair), address(user2)), true);
+    }
+
+    function test_cage_queued_safe_change_safe_function2() public {
+        queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.add.selector, 100, address(pair), address(user2)), true);
+    }
+
+    function test_cage_queued_safe_change_safe_args1() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), false), true);
+    }
+
+    function test_cage_queued_safe_change_safe_args2() public {
+        queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), false), true);
+    }
+
+    function test_cage_queued_safe_change_safe_args3() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(rewarder), true), true);
+    }
+
+    function test_cage_queued_safe_change_safe_args4() public {
+        queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(rewarder), true), true);
+    }
+
+    function test_cage_queued_safe_change_safe_args5() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid() + 1, 100, address(user2), true), false);
+    }
+
+    function test_cage_queued_safe_change_safe_args6() public {
+        queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid() + 1, 100, address(user2), true), false);
     }
 
     function test_cage_false_positive() public {

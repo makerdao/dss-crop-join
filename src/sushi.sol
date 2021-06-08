@@ -35,6 +35,7 @@ interface MasterChefLike {
     function transferOwnership(address _newOwner, bool _direct, bool _renounce) external;
     function setMigrator(address) external;
     function set(uint256 _pid, uint256 _allocPoint, address _rewarder, bool _overwrite) external;
+    function add(uint256 _allocPoint, address _lpToken, address _rewarder) external;
 }
 
 interface TimelockLike {
@@ -42,6 +43,7 @@ interface TimelockLike {
     function queueTransaction(address,uint256,string memory,bytes memory,uint256) external;
     function executeTransaction(address,uint256,string memory,bytes memory,uint256) payable external;
     function delay() external view returns (uint256);
+    function admin() external view returns (address);
 }
 
 contract SushiJoin is CropJoin {
@@ -180,15 +182,21 @@ contract SushiJoin is CropJoin {
 
         _cage();
     }
-    function cage(uint256 value, string memory signature, bytes memory data, uint256 eta) external {
+    function cage(uint256 value, string calldata signature, bytes calldata data, uint256 eta) external {
         require(live, "SushiJoin/not-live");
 
         // Verify the queued transaction is targetting one of the dangerous functions on Masterchef
         bytes memory callData;
+        bytes memory argData;
         if (bytes(signature).length == 0) {
             callData = data;
+            argData = new bytes(data.length - 4);
+            for (uint256 i = 4; i < data.length; i++) {
+                argData[i - 4] = data[i];
+            }
         } else {
             callData = abi.encodePacked(bytes4(keccak256(bytes(signature))), data);
+            argData = data;
         }
         require(callData.length >= 4, "SushiJoin/invalid-calldata");
         bytes4 selector = bytes4(
@@ -203,8 +211,8 @@ contract SushiJoin is CropJoin {
             selector == MasterChefLike.set.selector
         , "SushiJoin/wrong-function");
         if (selector == MasterChefLike.set.selector) {
-            uint8 overwrite = uint8(callData[131]) & 0x1;
-            require(overwrite == 1, "SushiJoin/bad-overwrite");
+            (uint256 _pid, , address _rewarder, bool _overwrite) = abi.decode(argData, (uint256, uint256, address, bool));
+            require(pid == _pid && _overwrite && _rewarder != rewarder, "SushiJoin/set-invalid-arguments");
         }
         bytes32 txHash = keccak256(abi.encode(masterchef, value, signature, data, eta));
         require(timelock.queuedTransactions(txHash), "SushiJoin/invalid-hash");
