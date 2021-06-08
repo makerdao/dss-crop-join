@@ -45,4 +45,3 @@ contract Token {
         mint(msg.sender, wad);
     }
 }
-
