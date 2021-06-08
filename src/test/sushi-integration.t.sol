@@ -156,7 +156,7 @@ contract Usr {
     }
 
     // Include this callback to prevent error on rewards change check
-    function onSushiReward(uint256 pid, address user, address recipient, uint256 sushiAmount, uint256 newLpAmount) external {
+    function onSushiReward(uint256 _pid, address _user, address _recipient, uint256 _sushiAmount, uint256 _newLpAmount) external {
 
     }
 
