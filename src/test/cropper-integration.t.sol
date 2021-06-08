@@ -170,7 +170,69 @@ contract CropperIntegrationTest is TestBase {
         assertEq(bonus.balanceOf(address(this)), add(initialBonusBal, 10**4 * WAD));
     }
 
-    function test_take_return_collateral() public {}
-    function test_take_multiple_calls() public {}
-    function test_yank() public {}
+    function test_take_return_collateral() public {
+        uint256 initialStake    = join.stake(address(this));
+        uint256 initialGemBal   = gem.balanceOf(address(this));
+        uint256 initialBonusBal = bonus.balanceOf(address(this));
+
+        uint256 id = dog.bark(ILK, address(urnUsr), address(this));
+
+        // One DAI per gem; will be able to fully cover tab, leaving leftover collateral.
+        uint256 price = RAY;
+        abacus.set(price);
+
+        // Assert that the statement above is indeed true.
+        (, uint256 tab, uint256 lot,,,) = cropper.sales(id);
+        assertTrue(mul(lot, price) > tab);
+
+        // Ensure that we have enough DAI to cover our purchase.
+        assertTrue(tab < vat.dai(address(this)));
+
+        uint256 expectedPurchaseSize = tab / price;
+
+        bytes memory emptyBytes;
+        cropper.take(id, lot, price, address(this), emptyBytes);
+
+        (, tab, lot,,,) = cropper.sales(id);
+        assertEq(tab, 0);
+        assertEq(lot, 0);
+
+        // The collateral has been transferred to us.
+        assertEq(join.stake(address(this)), add(expectedPurchaseSize, initialStake));
+
+        // The remainder returned to the liquidated Vault.
+        uint256 collateralReturned = sub(10**3 * WAD, expectedPurchaseSize);
+        assertEq(join.stake(address(urnUsr)), collateralReturned);
+
+        // We can exit, withdrawing the appropriate fraction of the reward, without needing to tack.
+        join.exit(address(this), expectedPurchaseSize);
+        assertEq(join.stake(address(this)), initialStake);
+        assertEq(gem.balanceOf(address(this)), add(initialGemBal, expectedPurchaseSize));
+        assertEq(bonus.balanceOf(address(this)), add(initialBonusBal, mul(10**4 * WAD, expectedPurchaseSize) / (10**3 * WAD)));
+
+        // Liquidated urn can exit and get its fair share of rewards as well.
+        urnUsr.exit(address(urnUsr), collateralReturned);
+        assertEq(join.stake(address(urnUsr)), 0);
+        assertEq(gem.balanceOf(address(urnUsr)), collateralReturned);
+        assertEq(bonus.balanceOf(address(urnUsr)), mul(10**4 * WAD, collateralReturned) / (10**3 * WAD));
+    }
+
+    function test_yank() public {
+        uint256 initialStake    = join.stake(address(this));
+        uint256 initialGemBal   = gem.balanceOf(address(this));
+        uint256 initialBonusBal = bonus.balanceOf(address(this));
+
+        uint256 id = dog.bark(ILK, address(urnUsr), address(this));
+
+        cropper.yank(id);
+
+        // The collateral has been transferred to us.
+        assertEq(join.stake(address(this)), add(10**3 * WAD, initialStake));
+
+        // We can exit, withdrawing the full reward (10^4 bonus tokens), without needing to tack.
+        join.exit(address(this), 10**3 * WAD);
+        assertEq(join.stake(address(this)), initialStake);
+        assertEq(gem.balanceOf(address(this)), add(initialGemBal, 10**3 * WAD));
+        assertEq(bonus.balanceOf(address(this)), add(initialBonusBal, 10**4 * WAD));
+    }
 }
