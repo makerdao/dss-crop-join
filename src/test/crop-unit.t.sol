@@ -19,6 +19,7 @@ pragma solidity 0.6.12;
 import "dss-interfaces/Interfaces.sol";
 
 import "./base.sol";
+import "./crop-usr.sol";
 import "../crop.sol";
 
 contract MockVat {
@@ -77,76 +78,6 @@ contract Token {
     }
 }
 
-contract Usr {
-
-    CropJoin adapter;
-
-    constructor(CropJoin adapter_) public {
-        adapter = adapter_;
-    }
-
-    function approve(address coin, address usr) public {
-        Token(coin).approve(usr, uint(-1));
-    }
-    function join(address usr, uint wad) public {
-        adapter.join(usr, wad);
-    }
-    function join(uint wad) public {
-        adapter.join(address(this), wad);
-    }
-    function exit(address usr, uint wad) public {
-        adapter.exit(usr, wad);
-    }
-    function exit(uint wad) public {
-        adapter.exit(address(this), wad);
-    }
-    function crops() public view returns (uint256) {
-        return adapter.crops(address(this));
-    }
-    function stake() public view returns (uint256) {
-        return adapter.stake(address(this));
-    }
-    function reap() public {
-        adapter.join(address(this), 0);
-    }
-    function flee() public {
-        adapter.flee();
-    }
-    function tack(address src, address dst, uint256 wad) public {
-        adapter.tack(src, dst, wad);
-    }
-    function hope(address vat, address usr) public {
-        MockVat(vat).hope(usr);
-    }
-
-    function try_call(address addr, bytes calldata data) external returns (bool) {
-        bytes memory _data = data;
-        assembly {
-            let ok := call(gas(), addr, 0, add(_data, 0x20), mload(_data), 0, 0)
-            let free := mload(0x40)
-            mstore(free, ok)
-            mstore(0x40, add(free, 32))
-            revert(free, 32)
-        }
-    }
-    function can_call(address addr, bytes memory data) internal returns (bool) {
-        (bool ok, bytes memory success) = address(this).call(
-                                            abi.encodeWithSignature(
-                                                "try_call(address,bytes)"
-                                                , addr
-                                                , data
-                                                ));
-        ok = abi.decode(success, (bool));
-        if (ok) return true;
-    }
-    function can_exit(uint val) public returns (bool) {
-        bytes memory call = abi.encodeWithSignature
-            ("exit(address,uint256)", address(this), val);
-        return can_call(address(adapter), call);
-    }
-
-}
-
 contract CropUnitTest is TestBase {
 
     Token     gem;
@@ -164,12 +95,12 @@ contract CropUnitTest is TestBase {
         adapter = new CropJoin(address(vat), ilk, address(gem), address(bonus));
     }
 
-    function init_user() internal returns (Usr a, Usr b) {
+    function init_user() internal returns (CropUsr a, CropUsr b) {
         return init_user(200 * 1e6);
     }
-    function init_user(uint cash) internal returns (Usr a, Usr b) {
-        a = new Usr(adapter);
-        b = new Usr(adapter);
+    function init_user(uint cash) internal returns (CropUsr a, CropUsr b) {
+        a = new CropUsr(adapter);
+        b = new CropUsr(adapter);
 
         gem.transfer(address(a), cash);
         gem.transfer(address(b), cash);
@@ -177,7 +108,7 @@ contract CropUnitTest is TestBase {
         a.approve(address(gem), address(adapter));
         b.approve(address(gem), address(adapter));
 
-        a.hope(address(vat), address(this));
+        a.hope(address(this));
     }
 
     function reward(address usr, uint wad) internal virtual {
@@ -190,7 +121,7 @@ contract CropUnitTest is TestBase {
     }
 
     function test_simple_multi_user() public {
-        (Usr a, Usr b) = init_user();
+        (CropUsr a, CropUsr b) = init_user();
 
         a.join(60 * 1e6);
         b.join(40 * 1e6);
@@ -206,7 +137,7 @@ contract CropUnitTest is TestBase {
         assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
     }
     function test_simple_multi_reap() public {
-        (Usr a, Usr b) = init_user();
+        (CropUsr a, CropUsr b) = init_user();
 
         a.join(60 * 1e6);
         b.join(40 * 1e6);
@@ -249,7 +180,7 @@ contract CropUnitTest is TestBase {
         assertEq(bonus.balanceOf(self), 20 * 1e18);
     }
     function test_complex_scenario() public {
-        (Usr a, Usr b) = init_user();
+        (CropUsr a, CropUsr b) = init_user();
 
         a.join(60 * 1e6);
         b.join(40 * 1e6);
@@ -285,7 +216,7 @@ contract CropUnitTest is TestBase {
     // a user's balance can be altered with vat.flux, check that this
     // can only be disadvantageous
     function test_flux_transfer() public {
-        (Usr a, Usr b) = init_user();
+        (CropUsr a, CropUsr b) = init_user();
 
         a.join(100 * 1e6);
         reward(address(adapter), 50 * 1e18);
@@ -301,7 +232,7 @@ contract CropUnitTest is TestBase {
     // if the users's balance has been altered with flux, check that
     // all parties can still exit
     function test_flux_exit() public {
-        (Usr a, Usr b) = init_user();
+        (CropUsr a, CropUsr b) = init_user();
 
         a.join(100 * 1e6);
         reward(address(adapter), 50 * 1e18);
@@ -326,7 +257,7 @@ contract CropUnitTest is TestBase {
         assertEq(adapter.stake(address(b)),       0e18, "b join balance after");
     }
     function test_reap_after_flux() public {
-        (Usr a, Usr b) = init_user();
+        (CropUsr a, CropUsr b) = init_user();
 
         a.join(100 * 1e6);
         reward(address(adapter), 50 * 1e18);
@@ -403,7 +334,7 @@ contract CropUnitTest is TestBase {
            Here we check that tack accounts for rewards appropriately,
            regardless of whether we use (a) or (b).
         */
-        (Usr a, Usr b) = init_user();
+        (CropUsr a, CropUsr b) = init_user();
 
         // concurrent reap
         a.join(100e6);
@@ -437,7 +368,7 @@ contract CropUnitTest is TestBase {
     }
 
     function test_join_other() public {
-        (Usr a, Usr b) = init_user();
+        (CropUsr a, CropUsr b) = init_user();
 
         assertEq(gem.balanceOf(address(a)), 200e6);
         assertEq(gem.balanceOf(address(b)), 200e6);
@@ -484,7 +415,7 @@ contract CropUnitTest is TestBase {
             src to dst proportional to the fraction of src's stake that is
             transferred.
         */
-        (Usr a, Usr b) = init_user();  // each has 200 * 10^6 gem
+        (CropUsr a, CropUsr b) = init_user();  // each has 200 * 10^6 gem
 
         a.join(100e6);
         reward(address(adapter), 50e18);  // a has 50e18 pending rewards

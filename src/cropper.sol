@@ -16,12 +16,7 @@
 
 pragma solidity 0.6.12;
 
-interface VatLike {
-    function move(address,address,uint256) external;
-    function flux(bytes32,address,address,uint256) external;
-    function ilks(bytes32) external returns (uint256, uint256, uint256, uint256, uint256);
-    function suck(address,address,uint256) external;
-}
+import "./crop.sol";
 
 interface PipLike {
     function peek() external returns (bytes32, bool);
@@ -60,9 +55,9 @@ contract CropClipper {
     }
 
     // --- Data ---
-    bytes32      immutable public ilk;   // Collateral type of this CropClipper
-    VatLike      immutable public vat;   // Core CDP Engine
-    CropJoinLike immutable public crop;  // CropJoin adapter this contract performs liquidations for
+    bytes32  immutable public ilk;   // Collateral type of this CropClipper
+    VatLike  immutable public vat;   // Core CDP Engine
+    CropJoin immutable public crop;  // CropJoin adapter this contract performs liquidations for
 
     DogLike     public dog;      // Liquidation module
     address     public vow;      // Recipient of dai raised in auctions
@@ -141,7 +136,7 @@ contract CropClipper {
         spotter = SpotterLike(spotter_);
         dog     = DogLike(dog_);
         ilk     = ilk_;
-        crop    = CropJoinLike(crop_);
+        crop    = CropJoin(crop_);
         buf     = RAY;
         wards[msg.sender] = 1;
         emit Rely(msg.sender);

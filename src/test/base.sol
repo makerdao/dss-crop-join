@@ -18,12 +18,7 @@ pragma solidity 0.6.12;
 
 import "ds-test/test.sol";
 
-interface Hevm {
-    function warp(uint256) external;
-    function roll(uint256) external;
-    function store(address,bytes32,bytes32) external;
-    function load(address,bytes32) external returns (bytes32);
-}
+import "./hevm.sol";
 
 interface AuthLike {
     function wards(address) external returns (uint256);
@@ -140,5 +135,4 @@ contract TestBase is DSTest {
         // We have failed if we reach here
         assertTrue(false);
     }
-
 }
