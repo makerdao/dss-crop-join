@@ -131,11 +131,11 @@ contract CropClipper {
     event Yank(uint256 id);
 
     // --- Init ---
-    constructor(address vat_, address spotter_, address dog_, bytes32 ilk_, address crop_) public {
+    constructor(address vat_, address spotter_, address dog_, address crop_) public {
         vat     = VatLike(vat_);
         spotter = SpotterLike(spotter_);
         dog     = DogLike(dog_);
-        ilk     = ilk_;
+        ilk     = CropJoin(crop_).ilk();
         crop    = CropJoin(crop_);
         buf     = RAY;
         wards[msg.sender] = 1;
