@@ -328,7 +328,7 @@ contract SushiIntegrationTest is TestBase {
                 assertTrue(join.stock() <= dust);  // May be a slight rounding error
             }
             if (ptotal > 0) {
-                assertEqApproxBPS(join.share(), pshare + rdiv(punclaimedRewards, ptotal), 100);
+                assertEqApproxBPS(join.share(), pshare + rdiv(punclaimedRewards, ptotal), 500);
             } else {
                 assertEqApproxBPS(join.share(), pshare, 10);
             }
@@ -793,6 +793,37 @@ contract SushiIntegrationTest is TestBase {
 
     function test_cage_queued_safe_change_safe_args6() public {
         queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid() + 1, 100, address(user2), true), false);
+    }
+
+    // Verify that we can't get around the hash comparison by providing unexpected bool values
+    function test_cage_queued_irregular_bool_values1() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 0), true);
+        assertTrue(masterchef.rewarder(join.pid()) != address(user2));
+    }
+
+    function test_cage_queued_irregular_bool_values2() public {
+        execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 1));
+        assertEq(masterchef.rewarder(join.pid()), address(user2));
+    }
+
+    function testFail_cage_queued_irregular_bool_values3() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 2), true);
+    }
+
+    function testFail_cage_queued_irregular_bool_values4() public {
+        execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 3));
+    }
+
+    function testFail_cage_queued_irregular_bool_values5() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 1024), true);
+    }
+
+    function testFail_cage_queued_irregular_bool_values6() public {
+        execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 1025));
+    }
+
+    function testFail_cage_queued_irregular_bool_values7() public {
+        execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), type(uint256).max));
     }
 
     function test_cage_false_positive() public {
