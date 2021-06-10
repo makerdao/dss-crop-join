@@ -45,6 +45,9 @@ contract UrnUsr is CropUsr {
     function frob(bytes32 ilk, int256 dink, int256 dart) external {
         vat.frob(ilk, address(this), address(this), address(this), dink, dart);
     }
+    function flux(bytes32 ilk, address src, address dst, uint256 wad) external {
+        vat.flux(ilk, src, dst, wad);
+    }
 }
 
 contract CropperIntegrationTest is TestBase {
@@ -57,6 +60,8 @@ contract CropperIntegrationTest is TestBase {
     bytes32 constant ILK = "GEM-A";
 
     UrnUsr urnUsr;
+    UrnUsr urnUsr2;
+    UrnUsr urnUsr3;
 
     VatAbstract  vat;
     DogAbstract  dog;
@@ -111,6 +116,14 @@ contract CropperIntegrationTest is TestBase {
         gem.transfer(address(urnUsr), 10**3 * WAD);
         urnUsr.join(10**3 * WAD);
         urnUsr.frob(ILK, int256(10**3 * WAD), int256(500 * WAD));  // Draw maximum possible debt
+
+        // Create a second and third user where user 3 has gems, but not the stake to back them
+        urnUsr2 = new UrnUsr(join);
+        urnUsr3 = new UrnUsr(join);
+        gem.transfer(address(urnUsr2), 10**3 * WAD);
+        urnUsr2.join(10**3 * WAD);
+        urnUsr2.flux(ILK, address(urnUsr2), address(urnUsr3), 10**3 * WAD);
+        urnUsr3.frob(ILK, int256(10**3 * WAD), int256(500 * WAD));  // Draw maximum possible debt
 
         // Accrue rewards
         bonus.transfer(address(join), 10**4 * WAD);  // 10 bonus tokens per joined gem
@@ -225,6 +238,42 @@ contract CropperIntegrationTest is TestBase {
         uint256 id = dog.bark(ILK, address(urnUsr), address(this));
 
         cropper.yank(id);
+
+        // The collateral has been transferred to us.
+        assertEq(join.stake(address(this)), add(10**3 * WAD, initialStake));
+
+        // We can exit, withdrawing the full reward (10^4 bonus tokens), without needing to tack.
+        join.exit(address(this), 10**3 * WAD);
+        assertEq(join.stake(address(this)), initialStake);
+        assertEq(gem.balanceOf(address(this)), add(initialGemBal, 10**3 * WAD));
+        assertEq(bonus.balanceOf(address(this)), add(initialBonusBal, 10**4 * WAD));
+    }
+
+    function test_stake_doesnt_match_gems() public {
+        uint256 initialStake    = join.stake(address(this));
+        uint256 initialGemBal   = gem.balanceOf(address(this));
+        uint256 initialBonusBal = bonus.balanceOf(address(this));
+
+        uint256 id = dog.bark(ILK, address(urnUsr3), address(this));
+
+        // Quarter of a DAI per gem--this means the total value of collateral is 250 DAI,
+        // which is less than the tab. Thus we'll purchase 100% of the collateral.
+        uint256 price = 25 * RAY / 100;
+        abacus.set(price);
+
+        // Assert that the statement above is indeed true.
+        (, uint256 tab, uint256 lot,,,) = cropper.sales(id);
+        assertTrue(mul(lot, price) < tab);
+
+        // Ensure that we have enough DAI to cover our purchase.
+        assertTrue(mul(lot, price) < vat.dai(address(this)));
+
+        bytes memory emptyBytes;
+        cropper.take(id, lot, price, address(this), emptyBytes);
+
+        (, tab, lot,,,) = cropper.sales(id);
+        assertEq(tab, 0);
+        assertEq(lot, 0);
 
         // The collateral has been transferred to us.
         assertEq(join.stake(address(this)), add(10**3 * WAD, initialStake));
