@@ -729,99 +729,102 @@ contract SushiIntegrationTest is TestBase {
         }
     }
 
+    // Test both variants of setMigrator() which is a very powerful operation - it can steal collateral
     function test_cage_queued_dangerous_change_migrator1() public {
         execute_dangerous_timelock_action("setMigrator(address)", abi.encode(address(user2)));
         assertEq(masterchef.migrator(), address(user2));
     }
-
     function test_cage_queued_dangerous_change_migrator2() public {
         execute_dangerous_timelock_action("", abi.encodeWithSelector(MasterChefLike.setMigrator.selector, address(user2)));
         assertEq(masterchef.migrator(), address(user2));
     }
 
+    // Test both variants of transferOwnership() which allows the owner to be changed to something other than the timelock
+    // All bets are off in that case for these cage() protections
     function test_cage_queued_dangerous_change_owner1() public {
         execute_dangerous_timelock_action("transferOwnership(address,bool,bool)", abi.encode(address(user2), true, false));
         assertEq(masterchef.owner(), address(user2));
     }
-
     function test_cage_queued_dangerous_change_owner2() public {
         execute_dangerous_timelock_action("", abi.encodeWithSelector(MasterChefLike.transferOwnership.selector, address(user2), true, false));
         assertEq(masterchef.owner(), address(user2));
     }
 
+    // Test both variants of set() where the rewarder changes (possible re-entrancy attack here)
     function test_cage_queued_dangerous_change_rewarder1() public {
         execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), true));
         assertEq(masterchef.rewarder(join.pid()), address(user2));
     }
-
     function test_cage_queued_dangerous_change_rewarder2() public {
         execute_dangerous_timelock_action("", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), true));
         assertEq(masterchef.rewarder(join.pid()), address(user2));
     }
 
+    // Test the safe case where the target is not the masterchef
     function test_cage_queued_safe_change_diff_target() public {
         queue_safe_timelock_action(address(user1), "setMigrator(address)", abi.encode(address(user2)), false);
     }
 
+    // Test both variants of the safe case where the function being called on masterchef is not one considered dangerous
     function test_cage_queued_safe_change_safe_function1() public {
         queue_safe_timelock_action(address(masterchef), "add(uint256,address,address)", abi.encode(100, address(pair), address(user2)), true);
     }
-
     function test_cage_queued_safe_change_safe_function2() public {
         queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.add.selector, 100, address(pair), address(user2)), true);
     }
 
+    // Test both variants of the safe case where the set function has overwrite = false
     function test_cage_queued_safe_change_safe_args1() public {
         queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), false), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
     }
-
     function test_cage_queued_safe_change_safe_args2() public {
         queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), false), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
     }
 
+    // Test both variants of the safe case where the set function is overwriting the rewarder, but it's the same address
     function test_cage_queued_safe_change_safe_args3() public {
         queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(rewarder), true), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
     }
-
     function test_cage_queued_safe_change_safe_args4() public {
         queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(rewarder), true), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
     }
 
+    // Test both variants of the safe case where the set function where it's a different pool
     function test_cage_queued_safe_change_safe_args5() public {
         queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid() + 1, 100, address(user2), true), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
     }
-
     function test_cage_queued_safe_change_safe_args6() public {
         queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid() + 1, 100, address(user2), true), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
     }
 
     // Verify that we can't get around the hash comparison by providing unexpected bool values
+    // Want to test 0, 1, less than uint8 size with first bit set and unset, larger than uint8 size with first bit set and unset
     function test_cage_queued_irregular_bool_values1() public {
         queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 0), true);
         assertTrue(masterchef.rewarder(join.pid()) != address(user2));
     }
-
     function test_cage_queued_irregular_bool_values2() public {
         execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 1));
         assertEq(masterchef.rewarder(join.pid()), address(user2));
     }
-
     function testFail_cage_queued_irregular_bool_values3() public {
         queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 2), true);
     }
-
     function testFail_cage_queued_irregular_bool_values4() public {
         execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 3));
     }
-
     function testFail_cage_queued_irregular_bool_values5() public {
         queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 1024), true);
     }
-
     function testFail_cage_queued_irregular_bool_values6() public {
         execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 1025));
     }
-
     function testFail_cage_queued_irregular_bool_values7() public {
         execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), type(uint256).max));
     }
