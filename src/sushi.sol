@@ -67,13 +67,12 @@ contract SushiJoin is CropJoin {
     address                   public migrator;
     address                   public rewarder;
     TimelockLike              public timelock;
-    uint256                   public pid;
+    uint256         immutable public pid;
     bool                      public live;
 
     // --- Events ---
     event Rely(address indexed usr);
     event Deny(address indexed usr);
-    event File(bytes32 indexed what, uint256 data);
     event File(bytes32 indexed what, address data);
 
     /**
@@ -123,11 +122,6 @@ contract SushiJoin is CropJoin {
     }
 
     // --- Administration ---
-    function file(bytes32 what, uint256 data) external auth {
-        if (what == "pid") pid = data;
-        else revert("SushiJoin/file-unrecognized-param");
-        emit File(what, data);
-    }
     function file(bytes32 what, address data) external auth {
         if (what == "migrator") migrator = data;
         else if (what == "rewarder") rewarder = data;

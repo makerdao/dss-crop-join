@@ -286,9 +286,9 @@ contract SushiIntegrationTest is TestBase {
         assertEqApprox(unclaimedAdapterRewards(), 0, 1);
         assertEq(masterchefDepositAmount(), join.total());
         if (ptotal > 0) {
-            assertEqApproxBPS(join.share(), pshare + rdiv(punclaimedRewards, ptotal), 10);
+            assertEqApproxBPS(join.share(), pshare + rdiv(punclaimedRewards, ptotal), 1);
         } else {
-            assertEqApproxBPS(join.share(), pshare, 10);
+            assertEqApproxBPS(join.share(), pshare, 1);
         }
     }
     function doExit(Usr usr, uint256 amount) public {
@@ -328,16 +328,16 @@ contract SushiIntegrationTest is TestBase {
                 assertTrue(join.stock() <= dust);  // May be a slight rounding error
             }
             if (ptotal > 0) {
-                assertEqApproxBPS(join.share(), pshare + rdiv(punclaimedRewards, ptotal), 500);
+                assertEqApproxBPS(join.share(), pshare + rdiv(punclaimedRewards, ptotal), 50);
             } else {
-                assertEqApproxBPS(join.share(), pshare, 10);
+                assertEqApproxBPS(join.share(), pshare, 1);
             }
             assertEq(masterchefDepositAmount(), join.total());
             assertEq(pair.balanceOf(address(join)), 0);
             assertEq(unclaimedAdapterRewards(), 0);
         } else {
             assertEq(join.stock(), pstock);
-            assertEqApproxBPS(join.share(), pshare, 10);
+            assertEqApproxBPS(join.share(), pshare, 1);
             assertEq(masterchefDepositAmount(), 0);
             assertEq(pair.balanceOf(address(join)), join.total());
             assertEqApprox(unclaimedAdapterRewards(), punclaimedRewards, 1);
@@ -373,7 +373,7 @@ contract SushiIntegrationTest is TestBase {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
         assertEq(join.stock(), pstock);
-        assertEqApproxBPS(join.share(), pshare, 10);
+        assertEqApproxBPS(join.share(), pshare, 1);
         assertEqApprox(unclaimedAdapterRewards(), punclaimedRewards, 1);
         assertEq(usr.sushi(), psushi);
     }

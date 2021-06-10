@@ -165,7 +165,7 @@ contract TestBase is DSTest {
             a = b;
             b = tmp;
         }
-        if (a - b > mul(_b, _tolerance_bps) / 10 ** 5) {
+        if (a - b > mul(_b, _tolerance_bps) / 10 ** 4) {
             emit log_bytes32("Error: Wrong `uint' value");
             emit log_named_uint("  Expected", _b);
             emit log_named_uint("    Actual", _a);
