@@ -788,11 +788,11 @@ contract SushiIntegrationTest is TestBase {
     }
 
     function test_cage_queued_safe_change_safe_args5() public {
-        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid() + 1, 100, address(user2), true), false);
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid() + 1, 100, address(user2), true), true);
     }
 
     function test_cage_queued_safe_change_safe_args6() public {
-        queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid() + 1, 100, address(user2), true), false);
+        queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid() + 1, 100, address(user2), true), true);
     }
 
     // Verify that we can't get around the hash comparison by providing unexpected bool values
