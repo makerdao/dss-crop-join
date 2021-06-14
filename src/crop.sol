@@ -121,8 +121,13 @@ contract CropJoin {
     function harvest(address from, address to) internal {
         if (total > 0) share = add(share, rdiv(crop(), total));
 
+        uint256 _stake = stake[from];
+        (uint256 ink,) = vat.urns(ilk, from);
+        uint256 gems = add(vat.gem(ilk, from), ink);
+        if (gems < _stake) _stake = gems;
+
         uint256 last = crops[from];
-        uint256 curr = rmul(stake[from], share);
+        uint256 curr = rmul(_stake, share);
         if (curr > last) require(bonus.transfer(to, curr - last));
         stock = bonus.balanceOf(address(this));
     }
@@ -159,7 +164,9 @@ contract CropJoin {
             vat.slip(ilk, msg.sender, -int256(wad));
 
             total = sub(total, wad);
-            stake[msg.sender] = sub(stake[msg.sender], wad);
+            uint256 _stake = stake[msg.sender];
+            if (_stake < wad) wad = _stake;
+            stake[msg.sender] = sub(_stake, wad);
         }
         crops[msg.sender] = rmulup(stake[msg.sender], share);
         emit Exit(val);
@@ -174,7 +181,9 @@ contract CropJoin {
         vat.slip(ilk, msg.sender, -int256(wad));
 
         total = sub(total, wad);
-        stake[msg.sender] = sub(stake[msg.sender], wad);
+        uint256 _stake = stake[msg.sender];
+        if (_stake < wad) wad = _stake;
+        stake[msg.sender] = sub(_stake, wad);
         crops[msg.sender] = rmulup(stake[msg.sender], share);
 
         emit Flee();

@@ -80,9 +80,11 @@ contract Token {
 contract Usr {
 
     CropJoin adapter;
+    MockVat vat;
 
     constructor(CropJoin adapter_) public {
         adapter = adapter_;
+        vat = MockVat(address(adapter_.vat()));
     }
 
     function approve(address coin, address usr) public {
@@ -115,8 +117,11 @@ contract Usr {
     function tack(address src, address dst, uint256 wad) public {
         adapter.tack(src, dst, wad);
     }
-    function hope(address vat, address usr) public {
-        MockVat(vat).hope(usr);
+    function hope(address usr) public {
+        vat.hope(usr);
+    }
+    function flux(address from, address to, uint256 wad) public {
+        vat.flux(adapter.ilk(), from, to, wad);
     }
 
     function try_call(address addr, bytes calldata data) external returns (bool) {
@@ -177,7 +182,7 @@ contract CropUnitTest is TestBase {
         a.approve(address(gem), address(adapter));
         b.approve(address(gem), address(adapter));
 
-        a.hope(address(vat), address(this));
+        a.hope(address(this));
     }
 
     function reward(address usr, uint wad) internal virtual {
@@ -342,28 +347,28 @@ contract CropUnitTest is TestBase {
         // rewards on x, while b will not earn anything on x, until we
         // reset balances with `tack`
         assertTrue(!a.can_exit(100e6), "can't full exit after flux");
-        assertEq(adapter.stake(address(a)),     100e18);
+        assertEq(adapter.stake(address(a)), 100e18);
         a.exit(0);
 
-        assertEq(bonus.balanceOf(address(a)), 100e18, "can claim remaining rewards");
+        assertEq(bonus.balanceOf(address(a)), 50e18, "cannot claim remaining rewards without gems (rewards are lost)");
 
         reward(address(adapter), 50e18);
         a.exit(0);
 
-        assertEq(bonus.balanceOf(address(a)), 150e18, "rewards continue to accrue");
+        assertEq(bonus.balanceOf(address(a)), 50e18, "still cannot claim remaining rewards without gems");
 
-        assertEq(adapter.stake(address(a)),     100e18, "balance is unchanged");
+        assertEq(adapter.stake(address(a)), 100e18, "balance is unchanged");
 
-        adapter.tack(address(a), address(b),    100e18);
+        adapter.tack(address(a), address(b), 100e18);
         reward(address(adapter), 50e18);
         a.exit(0);
 
-        assertEq(bonus.balanceOf(address(a)), 150e18, "rewards no longer increase");
+        assertEq(bonus.balanceOf(address(a)), 50e18, "still no change");
 
-        assertEq(adapter.stake(address(a)),       0e18, "balance is zeroed");
-        assertEq(bonus.balanceOf(address(b)),   0e18, "b has no rewards yet");
+        assertEq(adapter.stake(address(a)), 0e18, "balance is zeroed");
+        assertEq(bonus.balanceOf(address(b)), 0e18, "b has no rewards yet");
         b.join(0);
-        assertEq(bonus.balanceOf(address(b)),  50e18, "b now receives rewards");
+        assertEq(bonus.balanceOf(address(b)), 50e18, "b doesn't receive outstanding rewards");
     }
 
     // flee is an emergency exit with no rewards, check that these are
@@ -565,5 +570,23 @@ contract CropUnitTest is TestBase {
         assertEq(diff, 280e6);
         assertEq(adapter.stake(address(b)), 0);
         assertEq(bonus.balanceOf(address(b)), preBonusBal);
+    }
+
+    function test_exit_without_stake() public {
+        (Usr a, Usr b) = init_user();
+
+        assertEq(gem.balanceOf(address(a)), 200e6);
+        assertEq(gem.balanceOf(address(b)), 200e6);
+
+        // User A sends some gems to User B, but doesn't tack
+        a.join(100e6);
+        a.flux(address(a), address(b), 100e18);
+        assertEq(vat.gem(ilk, address(b)), 100e18);
+
+        // User B can still exit / flee
+        b.exit(50e6);
+        assertEq(gem.balanceOf(address(b)), 250e6);
+        b.flee();
+        assertEq(gem.balanceOf(address(b)), 300e6);
     }
 }
