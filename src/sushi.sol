@@ -150,7 +150,7 @@ contract SushiJoin is CropJoin {
 
     function flee() public override {
         if (live) {
-            uint256 val = vat.gem(ilk, msg.sender);
+            uint256 val = vat.gem(ilk, proxy[msg.sender]);
             masterchef.withdraw(pid, val);
         }
         super.flee();

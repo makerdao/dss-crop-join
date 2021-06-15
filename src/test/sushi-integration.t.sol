@@ -32,6 +32,7 @@ contract Usr {
     Hevm hevm;
     VatAbstract vat;
     SushiJoin adapter;
+    address public urp;
     SushiLPLike pair;
     ERC20 wbtc;
     ERC20 weth;
@@ -42,6 +43,9 @@ contract Usr {
         hevm = hevm_;
         adapter = join_;
         pair = pair_;
+
+        adapter.join(address(this), 0);  // Create UrnProxy
+        urp = adapter.proxy(address(this));
 
         vat = VatAbstract(address(adapter.vat()));
         masterchef = adapter.masterchef();
@@ -66,13 +70,13 @@ contract Usr {
         adapter.exit(address(this), wad);
     }
     function crops() public view returns (uint256) {
-        return adapter.crops(address(this));
+        return adapter.crops(urp);
     }
     function stake() public view returns (uint256) {
-        return adapter.stake(address(this));
+        return adapter.stake(urp);
     }
     function gems() public view returns (uint256) {
-        return vat.gem(adapter.ilk(), address(this));
+        return vat.gem(adapter.ilk(), urp);
     }
     function masterchefRewards() public view returns (uint256) {
         return masterchef.pendingSushi(adapter.pid(), address(this));
@@ -134,7 +138,9 @@ contract Usr {
     function transfer(address to, uint val) public {
         pair.transfer(to, val);
     }
-
+    function frob(int256 dink, int256 dart) public {
+        adapter.frob(dink, dart);
+    }
 }
 
 // Mainnet tests against SushiSwap
@@ -186,6 +192,7 @@ contract SushiIntegrationTest is TestBase {
 
         join = new SushiJoin(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, address(timelock));
         vat.rely(address(join));
+        vat.init(ilk);
         user1 = new Usr(hevm, join, pair);
         user2 = new Usr(hevm, join, pair);
         user3 = new Usr(hevm, join, pair);
@@ -216,7 +223,7 @@ contract SushiIntegrationTest is TestBase {
         uint256 ptotal = join.total();
         uint256 pstake = usr.stake();
         uint256 pcrops = usr.crops();
-        uint256 pgems = usr.gems();
+        uint256 pgems  = usr.gems();
         uint256 psushi = usr.sushi();
         uint256 punclaimedRewards = unclaimedAdapterRewards();
 
@@ -256,7 +263,7 @@ contract SushiIntegrationTest is TestBase {
         uint256 ptotal = join.total();
         uint256 pstake = usr.stake();
         uint256 pcrops = usr.crops();
-        uint256 pgems = usr.gems();
+        uint256 pgems  = usr.gems();
         uint256 psushi = usr.sushi();
         uint256 punclaimedRewards = unclaimedAdapterRewards();
 
@@ -321,7 +328,7 @@ contract SushiIntegrationTest is TestBase {
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), 0);
         assertEq(usr.crops(), 0);
-        assertEq(usr.gems(), 0);
+        assertEq(usr.gems(),  0);
         if (join.live()) {
             assertEq(masterchefDepositAmount(), join.total());
             assertEq(pair.balanceOf(address(join)), 0);
@@ -489,7 +496,7 @@ contract SushiIntegrationTest is TestBase {
         hevm.roll(block.number + 100);
 
         // user2 has no stake and so should not be able to take user1's rewards
-        user2.tack(address(user1), address(user2), amount);
+        user2.tack(user1.urp(), user2.urp(), amount);
     }
 
     function test_auction_take_rewards() public {
@@ -499,12 +506,12 @@ contract SushiIntegrationTest is TestBase {
 
         hevm.roll(block.number + 100);
 
-        // user2 takes user1's gems (via auction or something)
-        user1.hope(address(this));
-        vat.flux(ilk, address(user1), address(user2), amount1);
+        // user2 ends up with user1's gems (via auction or something)
+        user1.frob(int256(amount1), 0);
+        vat.grab(ilk, user1.urp(), user2.urp(), address(0), -int256(amount1), 0);
 
         // user2 should be able to take the rewards as well
-        user2.tack(address(user1), address(user2), amount1);
+        user2.tack(user1.urp(), user2.urp(), amount1);
         user2.exit(amount1);
 
         assertEq(user2.getLPBalance(), amount1 + amount2);

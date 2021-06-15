@@ -421,6 +421,11 @@ contract CropUnitTest is TestBase {
         adapter.flee();
         assertEq(bonus.balanceOf(self), 20 * 1e18, "rewards invariant over flee");
         assertEq(gem.balanceOf(self), 1000e6, "balance after flee");
+        assertEq(adapter.total(), 0);
+        address urp = adapter.proxy(address(this));
+        assertEq(vat.gem(ilk, urp),  0);
+        assertEq(adapter.stake(urp), 0);
+        assertEq(adapter.crops(urp), 0);
     }
 
     function test_tack() public {
