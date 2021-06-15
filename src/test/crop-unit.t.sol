@@ -45,6 +45,29 @@ contract MockVat {
         gem[ilk][dst] = add(gem[ilk][dst], wad);
     }
     function hope(address usr) external {}
+
+    bytes32 expect_frob_ilk;
+    address expect_frob_u;
+    address expect_frob_v;
+    address expect_frob_w;
+    int256  expect_frob_dink;
+    int256  expect_frob_dart;
+    function expect_frob(bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) public {
+        expect_frob_ilk  = ilk;
+        expect_frob_u    = u;
+        expect_frob_v    = v;
+        expect_frob_w    = w;
+        expect_frob_dink = dink;
+        expect_frob_dart = dart;
+    }
+    function frob(bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) public view {
+        require(expect_frob_ilk  == ilk);
+        require(expect_frob_u    == u);
+        require(expect_frob_v    == v);
+        require(expect_frob_w    == w);
+        require(expect_frob_dink == dink);
+        require(expect_frob_dart == dart);
+    }
 }
 
 contract Token {
@@ -80,9 +103,12 @@ contract Token {
 contract Usr {
 
     CropJoin adapter;
+    address public urp;  // UrnProxy of user
 
     constructor(CropJoin adapter_) public {
         adapter = adapter_;
+        adapter_.join(address(this), 0);  // Create UrnProxy
+        urp = adapter_.proxy(address(this));
     }
 
     function approve(address coin, address usr) public {
@@ -101,10 +127,10 @@ contract Usr {
         adapter.exit(address(this), wad);
     }
     function crops() public view returns (uint256) {
-        return adapter.crops(address(this));
+        return adapter.crops(urp);
     }
     function stake() public view returns (uint256) {
-        return adapter.stake(address(this));
+        return adapter.stake(urp);
     }
     function reap() public {
         adapter.join(address(this), 0);
@@ -117,6 +143,9 @@ contract Usr {
     }
     function hope(address vat, address usr) public {
         MockVat(vat).hope(usr);
+    }
+    function frob(int256 dink, int256 dart) public {
+        adapter.frob(dink, dart);
     }
 
     function try_call(address addr, bytes calldata data) external returns (bool) {
@@ -144,7 +173,6 @@ contract Usr {
             ("exit(address,uint256)", address(this), val);
         return can_call(address(adapter), call);
     }
-
 }
 
 contract CropUnitTest is TestBase {
@@ -284,6 +312,8 @@ contract CropUnitTest is TestBase {
 
     // a user's balance can be altered with vat.flux, check that this
     // can only be disadvantageous
+    // In the new design, users themselves cannot flux, but since permissioned contracts
+    // might still do so, this test is retained.
     function test_flux_transfer() public {
         (Usr a, Usr b) = init_user();
 
@@ -294,12 +324,14 @@ contract CropUnitTest is TestBase {
         assertEq(bonus.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
         reward(address(adapter), 50 * 1e18);
-        vat.flux(ilk, address(a), address(b), 50 * 1e18);
+        vat.flux(ilk, a.urp(), b.urp(), 50 * 1e18);
         b.join(0);
         assertEq(bonus.balanceOf(address(b)),  0 * 1e18, "if nonzero we have a problem");
     }
     // if the users's balance has been altered with flux, check that
     // all parties can still exit
+    // In the new design, users themselves cannot flux, but since permissioned contracts
+    // might still do so, this test is retained.
     function test_flux_exit() public {
         (Usr a, Usr b) = init_user();
 
@@ -310,21 +342,23 @@ contract CropUnitTest is TestBase {
         assertEq(bonus.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
         reward(address(adapter), 50 * 1e18);
-        vat.flux(ilk, address(a), address(b), 50 * 1e18);
+        vat.flux(ilk, a.urp(), b.urp(), 50 * 1e18);
 
         assertEq(gem.balanceOf(address(a)), 100e6,  "a balance before exit");
-        assertEq(adapter.stake(address(a)),     100e18, "a join balance before");
+        assertEq(a.stake(),                 100e18, "a join balance before");
         a.exit(50 * 1e6);
         assertEq(gem.balanceOf(address(a)), 150e6,  "a balance after exit");
-        assertEq(adapter.stake(address(a)),      50e18, "a join balance after");
+        assertEq(a.stake(),                 50e18,  "a join balance after");
 
         assertEq(gem.balanceOf(address(b)), 200e6,  "b balance before exit");
-        assertEq(adapter.stake(address(b)),       0e18, "b join balance before");
-        adapter.tack(address(a), address(b),     50e18);
+        assertEq(b.stake(),                0e18,   "b join balance before");
+        adapter.tack(a.urp(), b.urp(),      50e18);
         b.flee();
         assertEq(gem.balanceOf(address(b)), 250e6,  "b balance after exit");
-        assertEq(adapter.stake(address(b)),       0e18, "b join balance after");
+        assertEq(b.stake(),                 0e18, "b join balance after");
     }
+    // In the new design, users themselves cannot flux, but since permissioned contracts
+    // might still do so, this test is retained.
     function test_reap_after_flux() public {
         (Usr a, Usr b) = init_user();
 
@@ -335,14 +369,14 @@ contract CropUnitTest is TestBase {
         assertEq(bonus.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
         assertTrue( a.can_exit( 50e6), "can exit before flux");
-        vat.flux(ilk, address(a), address(b), 100e18);
+        vat.flux(ilk, a.urp(), b.urp(), 100e18);
         reward(address(adapter), 50e18);
 
         // if x gems are transferred from a to b, a will continue to earn
         // rewards on x, while b will not earn anything on x, until we
         // reset balances with `tack`
-        assertTrue(!a.can_exit(100e6), "can't full exit after flux");
-        assertEq(adapter.stake(address(a)),     100e18);
+        assertTrue(!a.can_exit(100e6), "can't fully exit after flux");
+        assertEq(a.stake(), 100e18);
         a.exit(0);
 
         assertEq(bonus.balanceOf(address(a)), 100e18, "can claim remaining rewards");
@@ -352,18 +386,18 @@ contract CropUnitTest is TestBase {
 
         assertEq(bonus.balanceOf(address(a)), 150e18, "rewards continue to accrue");
 
-        assertEq(adapter.stake(address(a)),     100e18, "balance is unchanged");
+        assertEq(a.stake(), 100e18, "balance is unchanged");
 
-        adapter.tack(address(a), address(b),    100e18);
+        adapter.tack(a.urp(), b.urp(), 100e18);
         reward(address(adapter), 50e18);
         a.exit(0);
 
         assertEq(bonus.balanceOf(address(a)), 150e18, "rewards no longer increase");
 
-        assertEq(adapter.stake(address(a)),       0e18, "balance is zeroed");
-        assertEq(bonus.balanceOf(address(b)),   0e18, "b has no rewards yet");
+        assertEq(a.stake(), 0e18, "balance is zeroed");
+        assertEq(bonus.balanceOf(address(b)),  0e18, "b has no rewards yet");
         b.join(0);
-        assertEq(bonus.balanceOf(address(b)),  50e18, "b now receives rewards");
+        assertEq(bonus.balanceOf(address(b)), 50e18, "b now receives rewards");
     }
 
     // flee is an emergency exit with no rewards, check that these are
@@ -410,8 +444,8 @@ contract CropUnitTest is TestBase {
         reward(address(adapter), 50e18);
 
         a.join(0);
-        vat.flux(ilk, address(a), address(b), 100e18);
-        adapter.tack(address(a), address(b), 100e18);
+        vat.flux(ilk, a.urp(), b.urp(), 100e18);
+        adapter.tack(a.urp(), b.urp(), 100e18);
         b.join(0);
 
         reward(address(adapter), 50e18);
@@ -426,8 +460,8 @@ contract CropUnitTest is TestBase {
 
         // a doesn't reap their rewards before flux so all their pending
         // rewards go to b
-        vat.flux(ilk, address(a), address(b), 100e18);
-        adapter.tack(address(a), address(b), 100e18);
+        vat.flux(ilk, a.urp(), b.urp(), 100e18);
+        adapter.tack(a.urp(), b.urp(), 100e18);
 
         reward(address(adapter), 50e18);
         a.exit(0);
@@ -447,10 +481,10 @@ contract CropUnitTest is TestBase {
         reward(address(adapter), 50e18);
         assertEq(a.stake(), 0);
         assertEq(a.crops(), 0);
-        assertEq(vat.gem(ilk, address(a)), 0);
+        assertEq(vat.gem(ilk, a.urp()), 0);
         assertEq(b.stake(), 100e18);
         assertEq(b.crops(), 0);
-        assertEq(vat.gem(ilk, address(b)), 100e18);
+        assertEq(vat.gem(ilk, b.urp()), 100e18);
 
         // B can take all the rewards
         b.reap();
@@ -492,17 +526,17 @@ contract CropUnitTest is TestBase {
         b.join(100e6);  // modifies share
 
         // half of a's internal gem transferred to b w/o a reaping
-        vat.flux(ilk, address(a), address(b), 50e18);
+        vat.flux(ilk, a.urp(), b.urp(), 50e18);
 
-        assertEq(adapter.stake(address(a)), 100e18);
-        assertEq(adapter.stake(address(b)), 100e18);
-        assertEq(adapter.crops(address(a)), 0);
-        assertEq(adapter.crops(address(b)), 50e18);
-        adapter.tack(address(a), address(b), 50e18);
-        assertEq(adapter.stake(address(a)),  50e18);
-        assertEq(adapter.stake(address(b)), 150e18);
-        assertEq(adapter.crops(address(a)), 0);
-        assertEq(adapter.crops(address(b)), 50e18);
+        assertEq(a.stake(), 100e18);
+        assertEq(b.stake(), 100e18);
+        assertEq(a.crops(),   0   );
+        assertEq(b.crops(),  50e18);
+        adapter.tack(a.urp(), b.urp(), 50e18);
+        assertEq(a.stake(),  50e18);
+        assertEq(b.stake(), 150e18);
+        assertEq(a.crops(),   0   );
+        assertEq(b.crops(),  50e18);
 
         // both collect rewards, which are now split equally
 
@@ -514,7 +548,7 @@ contract CropUnitTest is TestBase {
         b.exit(0);
         assertEq(bonus.balanceOf(address(b)), 25e18);
 
-        // That wasn't too interesting since crops(a) started at zero.
+        // That wasn't too interesting since a.crops() started at zero.
         // Let's do some more operations with a non-zero share value.
 
         // 1/4 or 50e18 to a, 3/4 or 150e18 to b
@@ -524,17 +558,17 @@ contract CropUnitTest is TestBase {
         assertEq(adapter.share(), 15 * RAY / 10);  // share is ray(1.5)
 
         // transfer 3/5 of a's internal gem to b w/o a reaping
-        vat.flux(ilk, address(a), address(b), 30e18);
+        vat.flux(ilk, a.urp(), b.urp(), 30e18);
 
-        assertEq(adapter.stake(address(a)),  50e18);
-        assertEq(adapter.stake(address(b)), 250e18);
-        assertEq(adapter.crops(address(a)),  25e18);
-        assertEq(adapter.crops(address(b)), 375e18);
-        adapter.tack(address(a), address(b), 30e18);
-        assertEq(adapter.stake(address(a)),  20e18);
-        assertEq(adapter.stake(address(b)), 280e18);
-        assertEq(adapter.crops(address(a)),  10e18);
-        assertEq(adapter.crops(address(b)), 390e18);
+        assertEq(a.stake(),  50e18);
+        assertEq(b.stake(), 250e18);
+        assertEq(a.crops(),  25e18);
+        assertEq(b.crops(), 375e18);
+        adapter.tack(a.urp(), b.urp(), 30e18);
+        assertEq(a.stake(),  20e18);
+        assertEq(b.stake(), 280e18);
+        assertEq(a.crops(),  10e18);
+        assertEq(b.crops(), 390e18);
 
         // when a exits, they get 2/5 of 50e18, i.e. 20e18
         uint256 preBonusBal = bonus.balanceOf(address(a));
@@ -555,7 +589,7 @@ contract CropUnitTest is TestBase {
         a.exit(20e6);
         diff = sub(gem.balanceOf(address(a)), preGemBal);
         assertEq(diff, 20e6);
-        assertEq(adapter.stake(address(a)), 0);
+        assertEq(a.stake(), 0);
         assertEq(bonus.balanceOf(address(a)), preBonusBal);
 
         preGemBal = gem.balanceOf(address(b));
@@ -563,7 +597,13 @@ contract CropUnitTest is TestBase {
         b.exit(280e6);
         diff = sub(gem.balanceOf(address(b)), preGemBal);
         assertEq(diff, 280e6);
-        assertEq(adapter.stake(address(b)), 0);
+        assertEq(b.stake(), 0);
         assertEq(bonus.balanceOf(address(b)), preBonusBal);
+    }
+
+    function test_frob() public {
+        (Usr a,) = init_user();
+        vat.expect_frob(ilk, a.urp(), a.urp(), address(a), 10e18, 5e18);
+        a.frob(10e18, 5e18);
     }
 }
