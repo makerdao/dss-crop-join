@@ -140,7 +140,7 @@ contract CropJoin {
     function join(address urn, uint256 val) public virtual {
         address urp = proxy[urn];
         if (urp == address(0)) {
-            urp = address(new UrnProxy(address(vat)));
+            proxy[urn] = urp = address(new UrnProxy(address(vat)));
         }
         harvest(urp, urn);
         if (val > 0) {
