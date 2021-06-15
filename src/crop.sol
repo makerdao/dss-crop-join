@@ -17,9 +17,12 @@
 pragma solidity 0.6.12;
 
 interface VatLike {
+    function hope(address) external;
     function urns(bytes32, address) external view returns (uint256, uint256);
     function gem(bytes32, address) external view returns (uint256);
     function slip(bytes32, address, int256) external;
+    function flux(bytes32, address, address, uint256) external;
+    function frob(bytes32, address, address, address, int256, int256) external;
 }
 
 interface ERC20 {
@@ -29,6 +32,12 @@ interface ERC20 {
     function approve(address spender, uint256 amount) external returns (bool);
     function allowance(address owner, address spender) external view returns (uint256);
     function decimals() external returns (uint8);
+}
+
+contract UrnProxy {
+    constructor(address vat) public {
+        VatLike(vat).hope(msg.sender);
+    }
 }
 
 // receives tokens and shares them among holders
@@ -44,8 +53,9 @@ contract CropJoin {
     uint256     public total;  // total gems       [wad]
     uint256     public stock;  // crop balance     [wad]
 
-    mapping (address => uint256) public crops; // crops per user  [wad]
-    mapping (address => uint256) public stake; // gems per user   [wad]
+    mapping (address => uint256) public crops;  // crops per user  [wad]
+    mapping (address => uint256) public stake;  // gems per user   [wad]
+    mapping (address => address) public proxy;  // UrnProxy per user
 
     uint256 immutable internal to18ConversionFactor;
     uint256 immutable internal toGemConversionFactor;
@@ -128,7 +138,11 @@ contract CropJoin {
     }
 
     function join(address urn, uint256 val) public virtual {
-        harvest(urn, urn);
+        address urp = proxy[urn];
+        if (urp == address(0)) {
+            urp = address(new UrnProxy(address(vat)));
+        }
+        harvest(urp, urn);
         if (val > 0) {
             uint256 wad = wdiv(mul(val, to18ConversionFactor), nps());
 
@@ -137,17 +151,19 @@ contract CropJoin {
             require(int256(wad) > 0);
 
             require(gem.transferFrom(msg.sender, address(this), val));
-            vat.slip(ilk, urn, int256(wad));
+            vat.slip(ilk, urp, int256(wad));
 
             total = add(total, wad);
-            stake[urn] = add(stake[urn], wad);
+            stake[urp] = add(stake[urp], wad);
         }
-        crops[urn] = rmulup(stake[urn], share);
+        crops[urp] = rmulup(stake[urp], share);
         emit Join(val);
     }
 
     function exit(address guy, uint256 val) public virtual {
-        harvest(msg.sender, guy);
+        address urp = proxy[msg.sender];
+        require(urp != address(0), "CropJoin/no-urn-proxy");
+        harvest(urp, guy);
         if (val > 0) {
             uint256 wad = wdivup(mul(val, to18ConversionFactor), nps());
 
@@ -156,26 +172,29 @@ contract CropJoin {
             require(int256(wad) > 0);
 
             require(gem.transfer(guy, val));
-            vat.slip(ilk, msg.sender, -int256(wad));
+            vat.slip(ilk, urp, -int256(wad));
 
             total = sub(total, wad);
-            stake[msg.sender] = sub(stake[msg.sender], wad);
+            stake[urp] = sub(stake[urp], wad);
         }
-        crops[msg.sender] = rmulup(stake[msg.sender], share);
+        crops[urp] = rmulup(stake[urp], share);
         emit Exit(val);
     }
 
     function flee() public virtual {
-        uint256 wad = vat.gem(ilk, msg.sender);
+        address urp = proxy[msg.sender];
+        require(urp != address(0), "CropJoin/no-urn-proxy");
+
+        uint256 wad = vat.gem(ilk, urp);
         require(wad <= 2 ** 255);
         uint256 val = wmul(wmul(wad, nps()), toGemConversionFactor);
 
         require(gem.transfer(msg.sender, val));
-        vat.slip(ilk, msg.sender, -int256(wad));
+        vat.slip(ilk, urp, -int256(wad));
 
         total = sub(total, wad);
-        stake[msg.sender] = sub(stake[msg.sender], wad);
-        crops[msg.sender] = rmulup(stake[msg.sender], share);
+        stake[urp] = sub(stake[urp], wad);
+        crops[urp] = rmulup(stake[urp], share);
 
         emit Flee();
     }
@@ -198,5 +217,29 @@ contract CropJoin {
         require(stake[dst] <= add(vat.gem(ilk, dst), ink));
 
         emit Tack(src, dst, wad);
+    }
+
+    // If someone has received gems and stake e.g. through liquidations,
+    // they must gather them into an UrnProxy. An UrnProxy can be created
+    // for an arbitrary address by calling join(addr, 0). Like exit(),
+    // gather() uses msg.sender. msg.sender must vat.hope(adapter).
+    // Could in principle write a version to work with a debt position
+    // as well but it's probably not needed.
+    function gather() public {
+        address urp   = proxy[msg.sender];
+        require(urp  != address(0), "CropJoin/no-urn-proxy");
+        uint256 gems  = vat.gem(ilk, msg.sender);
+        uint256 steak = stake[msg.sender];
+        uint256 wad   = gems > steak ? steak : gems;
+        vat.flux(ilk, msg.sender, urp, wad);
+        stake[msg.sender] = sub(steak, wad);
+        stake[urp]        = add(stake[urp], wad);
+    }
+
+    // msg.sender must vat.hope(adapter)
+    function frob(int256 dink, int256 dart) external {
+        address urp = proxy[msg.sender];
+        require(urp != address(0), "CropJoin/no-urn-proxy");
+        vat.frob(ilk, urp, urp, msg.sender, dink, dart);
     }
 }
