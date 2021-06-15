@@ -232,8 +232,7 @@ contract CropJoin {
         uint256 steak = stake[msg.sender];
         uint256 wad   = gems > steak ? steak : gems;
         vat.flux(ilk, msg.sender, urp, wad);
-        stake[msg.sender] = sub(steak, wad);
-        stake[urp]        = add(stake[urp], wad);
+        tack(msg.sender, urp, wad);  // transfers any rewards, too
     }
 
     // msg.sender must vat.hope(adapter)
