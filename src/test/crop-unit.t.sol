@@ -70,6 +70,20 @@ contract MockVat {
     }
 }
 
+contract MockEnd {
+    address public immutable vat;
+    bytes32 public expect_ilk;
+    constructor(address _vat) public {
+        vat = _vat;
+    }
+    function expect_free(bytes32 ilk) external {
+        expect_ilk = ilk;
+    }
+    function free(bytes32 ilk) external {
+        require(ilk == expect_ilk);
+    }
+}
+
 contract Token {
     uint8 public decimals;
     mapping (address => uint) public balanceOf;
@@ -180,6 +194,7 @@ contract CropUnitTest is TestBase {
     Token     gem;
     Token     bonus;
     MockVat   vat;
+    MockEnd   end;
     address   self;
     bytes32   ilk = "TOKEN-A";
     CropJoin  adapter;
@@ -189,7 +204,9 @@ contract CropUnitTest is TestBase {
         gem = new Token(6, 1000 * 1e6);
         bonus = new Token(18, 0);
         vat = new MockVat();
+        end = new MockEnd(address(vat));
         adapter = new CropJoin(address(vat), ilk, address(gem), address(bonus));
+        adapter.file("end", address(end));
     }
 
     function init_user() internal returns (Usr a, Usr b) {
@@ -610,5 +627,27 @@ contract CropUnitTest is TestBase {
         (Usr a,) = init_user();
         vat.expect_frob(ilk, a.urp(), a.urp(), address(a), 10e18, 5e18);
         a.frob(10e18, 5e18);
+    }
+
+    function test_free() public {
+        adapter.join(address(this), 0);  // set up UrnProxy
+        end.expect_free(adapter.ilk());
+        adapter.free();
+    }
+
+    function testFail_free_no_urp() public {
+        end.expect_free(adapter.ilk());
+        adapter.free();
+    }
+
+    function testFail_UrnProxy_free_wrong_caller() public {
+        adapter.join(address(this), 0);  // set up UrnProxy
+        end.expect_free(adapter.ilk());
+        UrnProxy(adapter.proxy(address(this))).free(EndLike(address(end)), ilk);  // send must be creator of UrnProxy
+    }
+
+    function testFail_file_bad_end() public {
+        MockEnd fin = new MockEnd(address(0));
+        adapter.file("end", address(fin));
     }
 }

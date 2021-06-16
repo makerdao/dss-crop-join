@@ -41,21 +41,6 @@ interface TimelockLike {
 
 contract SushiJoin is CropJoin {
 
-    // --- Auth ---
-    mapping (address => uint256) public wards;
-    function rely(address usr) external auth {
-        wards[usr] = 1;
-        emit Rely(usr);
-    }
-    function deny(address usr) external auth {
-        wards[usr] = 0;
-        emit Deny(usr);
-    }
-    modifier auth {
-        require(wards[msg.sender] == 1, "SushiJoin/not-authorized");
-        _;
-    }
-
     MasterChefLike  immutable public masterchef;
     address                   public initialMigrator;
     TimelockLike              public timelockOwner;
@@ -63,10 +48,7 @@ contract SushiJoin is CropJoin {
     bool                      public live;
 
     // --- Events ---
-    event Rely(address indexed usr);
-    event Deny(address indexed usr);
     event File(bytes32 indexed what, uint256 data);
-    event File(bytes32 indexed what, address data);
 
     /**
         @param vat_                 MCD_VAT DSS core accounting module
@@ -105,7 +87,6 @@ contract SushiJoin is CropJoin {
         pid = pid_;
 
         ERC20(gem_).approve(masterchef_, uint256(-1));
-        wards[msg.sender] = 1;
         live = true;
     }
 
@@ -115,11 +96,11 @@ contract SushiJoin is CropJoin {
         else revert("SushiJoin/file-unrecognized-param");
         emit File(what, data);
     }
-    function file(bytes32 what, address data) external auth {
+    function file(bytes32 what, address data) public override auth {
         if (what == "initialMigrator") initialMigrator = data;
         else if (what == "timelockOwner") timelockOwner = TimelockLike(data);
-        else revert("SushiJoin/file-unrecognized-param");
-        emit File(what, data);
+        else super.file(what, data);
+        // Event will be emitted by superclass
     }
 
     // Ignore gems that have been directly transferred

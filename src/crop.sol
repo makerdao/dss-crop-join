@@ -34,14 +34,40 @@ interface ERC20 {
     function decimals() external returns (uint8);
 }
 
+interface EndLike {
+    function vat() external returns(address);
+    function free(bytes32 ilk) external;
+}
+
 contract UrnProxy {
+    address immutable adapter;
     constructor(address vat) public {
         VatLike(vat).hope(msg.sender);
+        adapter = msg.sender;
+    }
+    function free(EndLike end, bytes32 ilk) external {
+        require(msg.sender == adapter);
+        end.free(ilk);
     }
 }
 
 // receives tokens and shares them among holders
 contract CropJoin {
+
+    // --- Auth ---
+    mapping (address => uint256) public wards;
+    function rely(address usr) external auth {
+        wards[usr] = 1;
+        emit Rely(usr);
+    }
+    function deny(address usr) external auth {
+        wards[usr] = 0;
+        emit Deny(usr);
+    }
+    modifier auth {
+        require(wards[msg.sender] == 1, "SushiJoin/not-authorized");
+        _;
+    }
 
     VatLike     public immutable vat;    // cdp engine
     bytes32     public immutable ilk;    // collateral type
@@ -53,6 +79,8 @@ contract CropJoin {
     uint256     public total;  // total gems       [wad]
     uint256     public stock;  // crop balance     [wad]
 
+    EndLike     public end;  // End contract
+
     mapping (address => uint256) public crops;  // crops per user  [wad]
     mapping (address => uint256) public stake;  // gems per user   [wad]
     mapping (address => address) public proxy;  // UrnProxy per user
@@ -61,6 +89,9 @@ contract CropJoin {
     uint256 immutable internal toGemConversionFactor;
 
     // --- Events ---
+    event Rely(address indexed usr);
+    event Deny(address indexed usr);
+    event File(bytes32 indexed what, address data);
     event Join(uint256 val);
     event Exit(uint256 val);
     event Flee();
@@ -75,8 +106,17 @@ contract CropJoin {
         dec = dec_;
         to18ConversionFactor = 10 ** (18 - dec_);
         toGemConversionFactor = 10 ** dec_;
-
         bonus = ERC20(bonus_);
+        wards[msg.sender] = 1;
+        emit Rely(msg.sender);
+    }
+
+    function file(bytes32 what, address data) public virtual auth {
+        if (what == "end") {
+           end = EndLike(data);
+           require(end.vat() == address(vat), "CropJoin/incompatible-end");
+        } else revert("CropJoin/file-unrecognized-param");
+        emit File(what, data);
     }
 
     function add(uint256 x, uint256 y) public pure returns (uint256 z) {
@@ -224,5 +264,12 @@ contract CropJoin {
         address urp = proxy[msg.sender];
         require(urp != address(0), "CropJoin/no-urn-proxy");
         vat.frob(ilk, urp, urp, msg.sender, dink, dart);
+    }
+
+    // --- End integration ---
+    function free() external {
+        address urp = proxy[msg.sender];
+        require(urp != address(0), "CropJoin/no-urn-proxy");
+        UrnProxy(urp).free(end, ilk);
     }
 }
