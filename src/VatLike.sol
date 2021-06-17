@@ -16,11 +16,13 @@
 
 pragma solidity 0.6.12;
 interface VatLike {
+    function hope(address) external;
     function urns(bytes32, address) external view returns (uint256, uint256);
     function gem(bytes32, address) external view returns (uint256);
     function slip(bytes32, address, int256) external;
-    function move(address,address,uint256) external;
-    function flux(bytes32,address,address,uint256) external;
+    function move(address, address, uint256) external;
+    function flux(bytes32, address, address, uint256) external;
+    function frob(bytes32, address, address, address, int256, int256) external;
     function ilks(bytes32) external returns (uint256, uint256, uint256, uint256, uint256);
-    function suck(address,address,uint256) external;
+    function suck(address, address, uint256) external;
 }

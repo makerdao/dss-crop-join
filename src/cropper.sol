@@ -42,8 +42,9 @@ interface AbacusLike {
 }
 
 interface CropJoinLike {
+    function ilk() external returns (bytes32);
+    function proxy(address) external returns (address);
     function tack(address, address, uint256) external;
-    function proxy(address) external returns(address);
 }
 
 contract CropClipper {
@@ -133,7 +134,7 @@ contract CropClipper {
     event Yank(uint256 id);
 
     // --- Init ---
-    constructor(address vat_, address spotter_, address dog_, bytes32 ilk_, address crop_) public {
+    constructor(address vat_, address spotter_, address dog_, address crop_) public {
         vat     = VatLike(vat_);
         spotter = SpotterLike(spotter_);
         dog     = DogLike(dog_);
@@ -392,7 +393,7 @@ contract CropClipper {
                 address urp = crop.proxy(who);
                 require(urp != address(0), "CropClipper/no-urn-proxy");
                 vat.flux(ilk, address(this), urp, slice);
-                crop.tack(address(this, urp, slice));  // Transfer stake+rewards
+                crop.tack(address(this), urp, slice);  // Transfer stake+rewards
             }
 
             // Do external call (if data is defined) but to be
@@ -414,7 +415,7 @@ contract CropClipper {
             _remove(id);
         } else if (tab == 0) {
             vat.flux(ilk, address(this), usr, lot);
-            crop.tack(address(this, usr, lot));  // Transfer stake+rewards
+            crop.tack(address(this), usr, lot);  // Transfer stake+rewards
             _remove(id);
         } else {
             sales[id].tab = tab;
