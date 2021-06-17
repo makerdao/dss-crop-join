@@ -17,25 +17,69 @@
 pragma solidity 0.6.12;
 
 interface VatLike {
+    function live() external view returns (uint256);
+    function urns(bytes32, address) external returns (uint256, uint256);
+    function fork(bytes32, address, address, int256, int256) external;
     function frob(bytes32, address, address, address, int256, int256) external;
     function hope(address) external;
-}
-
-interface EndLike {
-    function free(bytes32 ilk) external;
+    function nope(address) external;
 }
 
 interface CropLike {
+    function gem() external view returns (address);
     function join(address, uint256) external;
     function exit(address, address, uint256) external;
     function flee(address) external;
 }
 
-abstract contract Delegate {
-    function implementation() internal view virtual returns (address);
+interface TokenLike {
+    function transferFrom(address, address, uint256) external;
+}
+
+contract UrnProxy {
+    address immutable public vat;
+    address public owner;
+
+    constructor(address vat_) public {
+        owner = msg.sender;
+        vat = vat_;
+        VatLike(vat_).hope(msg.sender);
+    }
+
+    function migrate(address newOwner) external {
+        require(msg.sender == owner, "UrnProxy/not-owner");
+        VatLike(vat).hope(newOwner);
+        VatLike(vat).nope(owner);
+        owner = newOwner;
+    }
+}
+
+contract CropProxyLogic {
+    mapping (address => uint256) public wards;
+    mapping (address => address) public proxy;  // UrnProxy per user
+    address public implementation;
+
+    event Rely(address indexed);
+    event Deny(address indexed);
+    event SetImplementation(address indexed);
+
+    constructor() public {
+        wards[msg.sender] = 1;
+        emit Rely(msg.sender);
+    }
+
+    function rely(address usr) public auth { wards[usr] = 1; emit Rely(msg.sender); }
+    function deny(address usr) public auth { wards[usr] = 0; emit Deny(msg.sender); }
+    modifier auth { require(wards[msg.sender] == 1, "CropJoin/non-authed"); _; }
+
+
+    function setImplementation(address implementation_) external auth {
+        implementation = implementation_;
+        emit SetImplementation(implementation_);
+    }
 
     fallback() external {
-        address _impl = implementation();
+        address _impl = implementation;
         require(_impl != address(0));
 
         assembly {
@@ -49,64 +93,6 @@ abstract contract Delegate {
             case 0 { revert(ptr, size) }
             default { return(ptr, size) }
         }
-    }
-}
-
-contract UrnProxy is Delegate {
-    address immutable public logic;
-
-    constructor(address vat) public {
-        logic = msg.sender;
-        VatLike(vat).hope(msg.sender);
-    }
-
-    function implementation() internal view override returns (address) { return CropProxyLogic(logic).urnProxyImplementation(); }
-}
-
-contract UrnProxyImp {
-    address immutable public logic;
-
-    constructor(address logic_) public {
-        logic = logic_;
-    }
-
-    function free(address end, bytes32 ilk) external {
-        require(msg.sender == logic);
-        EndLike(end).free(ilk);
-    }
-}
-
-contract CropProxyLogic is Delegate {
-    mapping (address => uint256) public wards;
-    mapping (address => address) public proxy;  // UrnProxy per user
-    address logicImplementation;
-    address public urnProxyImplementation;
-
-    event Rely(address indexed);
-    event Deny(address indexed);
-    event SetImplementation(address indexed);
-    event SetUrnProxyImplementation(address indexed);
-
-    constructor() public {
-        wards[msg.sender] = 1;
-        emit Rely(msg.sender);
-    }
-
-    function implementation() internal view override returns (address) { return logicImplementation; }
-
-    function rely(address usr) public auth { wards[usr] = 1; emit Rely(msg.sender); }
-    function deny(address usr) public auth { wards[usr] = 0; emit Deny(msg.sender); }
-    modifier auth { require(wards[msg.sender] == 1, "CropJoin/non-authed"); _; }
-
-
-    function setImplementation(address implementation_) external auth {
-        logicImplementation = implementation_;
-        emit SetImplementation(implementation_);
-    }
-
-    function setUrnProxyImplementation(address implementation_) external auth {
-        urnProxyImplementation = implementation_;
-        emit SetUrnProxyImplementation(implementation_);
     }
 }
 
@@ -126,7 +112,13 @@ contract CropProxyLogicImp {
         }
     }
 
+    function toInt(uint256 x) internal pure returns (int256 y) {
+        y = int256(x);
+        require(y >= 0);
+    }
+
     function join(address crop, address urn, uint256 val) external {
+        TokenLike(CropLike(crop).gem()).transferFrom(msg.sender, address(this), val);
         CropLike(crop).join(getProxy(urn), val);
     }
 
@@ -143,7 +135,17 @@ contract CropProxyLogicImp {
         VatLike(vat).frob(ilk, urp, urp, msg.sender, dink, dart);
     }
 
-    function free(address end, bytes32 ilk) external {
-        UrnProxyImp(getProxy(msg.sender)).free(end, ilk);
+    function quit(bytes32 ilk, address dst) external {
+        require(VatLike(vat).live() == 0, "CropProxyLogic/vat-still-live");
+
+        address urp = getProxy(msg.sender);
+        (uint256 ink, uint256 art) = VatLike(vat).urns(ilk, urp);
+        VatLike(vat).fork(
+            ilk,
+            urp,
+            dst,
+            toInt(ink),
+            toInt(art)
+        );
     }
 }
