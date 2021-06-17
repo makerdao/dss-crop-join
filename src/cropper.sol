@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/// clip.sol -- Dai auction module 2.0
-
-// Copyright (C) 2020-2021 Maker Ecosystem Growth Holdings, INC.
+// Copyright (C) 2021 Dai Foundation
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
@@ -17,7 +15,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-pragma solidity >=0.6.12;
+pragma solidity 0.6.12;
 
 interface VatLike {
     function move(address,address,uint256) external;
@@ -48,18 +46,18 @@ interface AbacusLike {
     function price(uint256, uint256) external view returns (uint256);
 }
 
-contract Clipper {
+contract CropClipper {
     // --- Auth ---
     mapping (address => uint256) public wards;
     function rely(address usr) external auth { wards[usr] = 1; emit Rely(usr); }
     function deny(address usr) external auth { wards[usr] = 0; emit Deny(usr); }
     modifier auth {
-        require(wards[msg.sender] == 1, "Clipper/not-authorized");
+        require(wards[msg.sender] == 1, "CropClipper/not-authorized");
         _;
     }
 
     // --- Data ---
-    bytes32  immutable public ilk;   // Collateral type of this Clipper
+    bytes32  immutable public ilk;   // Collateral type of this CropClipper
     VatLike  immutable public vat;   // Core CDP Engine
 
     DogLike     public dog;      // Liquidation module
@@ -146,14 +144,14 @@ contract Clipper {
 
     // --- Synchronization ---
     modifier lock {
-        require(locked == 0, "Clipper/system-locked");
+        require(locked == 0, "CropClipper/system-locked");
         locked = 1;
         _;
         locked = 0;
     }
 
     modifier isStopped(uint256 level) {
-        require(stopped < level, "Clipper/stopped-incorrect");
+        require(stopped < level, "CropClipper/stopped-incorrect");
         _;
     }
 
@@ -165,7 +163,7 @@ contract Clipper {
         else if (what == "chip")       chip = uint64(data);   // Percentage of tab to incentivize (max: 2^64 - 1 => 18.xxx WAD = 18xx%)
         else if (what == "tip")         tip = uint192(data);  // Flat fee to incentivize keepers (max: 2^192 - 1 => 6.277T RAD)
         else if (what == "stopped") stopped = data;           // Set breaker (0, 1, 2, or 3)
-        else revert("Clipper/file-unrecognized-param");
+        else revert("CropClipper/file-unrecognized-param");
         emit File(what, data);
     }
     function file(bytes32 what, address data) external auth lock {
@@ -173,7 +171,7 @@ contract Clipper {
         else if (what == "dog")    dog = DogLike(data);
         else if (what == "vow")    vow = data;
         else if (what == "calc")  calc = AbacusLike(data);
-        else revert("Clipper/file-unrecognized-param");
+        else revert("CropClipper/file-unrecognized-param");
         emit File(what, data);
     }
 
@@ -213,7 +211,7 @@ contract Clipper {
     function getFeedPrice() internal returns (uint256 feedPrice) {
         (PipLike pip, ) = spotter.ilks(ilk);
         (bytes32 val, bool has) = pip.peek();
-        require(has, "Clipper/invalid-price");
+        require(has, "CropClipper/invalid-price");
         feedPrice = rdiv(mul(uint256(val), BLN), spotter.par());
     }
 
@@ -233,11 +231,11 @@ contract Clipper {
         address kpr   // Address that will receive incentives
     ) external auth lock isStopped(1) returns (uint256 id) {
         // Input validation
-        require(tab  >          0, "Clipper/zero-tab");
-        require(lot  >          0, "Clipper/zero-lot");
-        require(usr != address(0), "Clipper/zero-usr");
+        require(tab  >          0, "CropClipper/zero-tab");
+        require(lot  >          0, "CropClipper/zero-lot");
+        require(usr != address(0), "CropClipper/zero-usr");
         id = ++kicks;
-        require(id   >          0, "Clipper/overflow");
+        require(id   >          0, "CropClipper/overflow");
 
         active.push(id);
 
@@ -250,7 +248,7 @@ contract Clipper {
 
         uint256 top;
         top = rmul(getFeedPrice(), buf);
-        require(top > 0, "Clipper/zero-top-price");
+        require(top > 0, "CropClipper/zero-top-price");
         sales[id].top = top;
 
         // incentive to kick auction
@@ -276,12 +274,12 @@ contract Clipper {
         uint96  tic = sales[id].tic;
         uint256 top = sales[id].top;
 
-        require(usr != address(0), "Clipper/not-running-auction");
+        require(usr != address(0), "CropClipper/not-running-auction");
 
         // Check that auction needs reset
         // and compute current price [ray]
         (bool done,) = status(tic, top);
-        require(done, "Clipper/cannot-reset");
+        require(done, "CropClipper/cannot-reset");
 
         uint256 tab   = sales[id].tab;
         uint256 lot   = sales[id].lot;
@@ -289,7 +287,7 @@ contract Clipper {
 
         uint256 feedPrice = getFeedPrice();
         top = rmul(feedPrice, buf);
-        require(top > 0, "Clipper/zero-top-price");
+        require(top > 0, "CropClipper/zero-top-price");
         sales[id].top = top;
 
         // incentive to redo auction
@@ -314,10 +312,10 @@ contract Clipper {
     // amount of collateral purchased will instead be just enough to collect `tab` DAI.
     //
     // To avoid partial purchases resulting in very small leftover auctions that will
-    // never be cleared, any partial purchase must leave at least `Clipper.chost`
+    // never be cleared, any partial purchase must leave at least `CropClipper.chost`
     // remaining DAI target. `chost` is an asynchronously updated value equal to
     // (Vat.dust * Dog.chop(ilk) / WAD) where the values are understood to be determined
-    // by whatever they were when Clipper.upchost() was last called. Purchase amounts
+    // by whatever they were when CropClipper.upchost() was last called. Purchase amounts
     // will be minimally decreased when necessary to respect this limit; i.e., if the
     // specified `amt` would leave `tab < chost` but `tab > 0`, the amount actually
     // purchased will be such that `tab == chost`.
@@ -335,7 +333,7 @@ contract Clipper {
         address usr = sales[id].usr;
         uint96  tic = sales[id].tic;
 
-        require(usr != address(0), "Clipper/not-running-auction");
+        require(usr != address(0), "CropClipper/not-running-auction");
 
         uint256 price;
         {
@@ -343,11 +341,11 @@ contract Clipper {
             (done, price) = status(tic, sales[id].top);
 
             // Check that auction doesn't need reset
-            require(!done, "Clipper/needs-reset");
+            require(!done, "CropClipper/needs-reset");
         }
 
         // Ensure price is acceptable to buyer
-        require(max >= price, "Clipper/too-expensive");
+        require(max >= price, "CropClipper/too-expensive");
 
         uint256 lot = sales[id].lot;
         uint256 tab = sales[id].tab;
@@ -371,7 +369,7 @@ contract Clipper {
                 uint256 _chost = chost;
                 if (tab - owe < _chost) {    // safe as owe < tab
                     // If tab <= chost, buyers have to take the entire lot.
-                    require(tab > _chost, "Clipper/no-partial-purchase");
+                    require(tab > _chost, "CropClipper/no-partial-purchase");
                     // Adjust amount to pay
                     owe = tab - _chost;      // owe' <= owe
                     // Adjust slice
@@ -389,7 +387,7 @@ contract Clipper {
 
             // Do external call (if data is defined) but to be
             // extremely careful we don't allow to do it to the two
-            // contracts which the Clipper needs to be authorized
+            // contracts which the CropClipper needs to be authorized
             DogLike dog_ = dog;
             if (data.length > 0 && who != address(vat) && who != address(dog_)) {
                 ClipperCallee(who).clipperCall(msg.sender, owe, slice, data);
@@ -464,7 +462,7 @@ contract Clipper {
 
     // Cancel an auction during ES or via governance action.
     function yank(uint256 id) external auth lock {
-        require(sales[id].usr != address(0), "Clipper/not-running-auction");
+        require(sales[id].usr != address(0), "CropClipper/not-running-auction");
         dog.digs(ilk, sales[id].tab);
         vat.flux(ilk, address(this), msg.sender, sales[id].lot);
         _remove(id);
