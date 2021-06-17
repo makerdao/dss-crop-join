@@ -98,13 +98,15 @@ contract CropProxyLogic {
 }
 
 contract CropProxyLogicImp {
-    bytes32 slot0;
+    mapping (address => uint256) public wards;
     mapping (address => address) public proxy;  // UrnProxy per user
 
     address public immutable vat;
     constructor(address vat_) public {
         vat = vat_;
     }
+
+    modifier auth { require(wards[msg.sender] == 1, "CropProxyLogic/non-authed"); _; }
 
     function getProxy(address usr) internal returns (address urp) {
         urp = proxy[usr];
@@ -118,8 +120,11 @@ contract CropProxyLogicImp {
         require(y >= 0);
     }
 
+    function approve(address crop) external auth {
+        TokenLike(CropLike(crop).gem()).approve(crop, type(uint256).max);
+    }
+
     function join(address crop, address urn, uint256 val) external {
-        TokenLike(CropLike(crop).gem()).approve(crop, val);
         TokenLike(CropLike(crop).gem()).transferFrom(msg.sender, address(this), val);
         CropLike(crop).join(getProxy(urn), urn, val);
     }
