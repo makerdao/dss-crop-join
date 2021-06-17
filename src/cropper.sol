@@ -46,6 +46,10 @@ interface AbacusLike {
     function price(uint256, uint256) external view returns (uint256);
 }
 
+interface CropJoinLike {
+    function tack(address, address, uint256) external;
+}
+
 contract CropClipper {
     // --- Auth ---
     mapping (address => uint256) public wards;
@@ -57,8 +61,9 @@ contract CropClipper {
     }
 
     // --- Data ---
-    bytes32  immutable public ilk;   // Collateral type of this CropClipper
-    VatLike  immutable public vat;   // Core CDP Engine
+    bytes32      immutable public ilk;   // Collateral type of this CropClipper
+    VatLike      immutable public vat;   // Core CDP Engine
+    CropJoinLike immutable public crop;  // CropJoin adapter this contract performs liquidations for
 
     DogLike     public dog;      // Liquidation module
     address     public vow;      // Recipient of dai raised in auctions
@@ -132,11 +137,12 @@ contract CropClipper {
     event Yank(uint256 id);
 
     // --- Init ---
-    constructor(address vat_, address spotter_, address dog_, bytes32 ilk_) public {
+    constructor(address vat_, address spotter_, address dog_, bytes32 ilk_, address crop_) public {
         vat     = VatLike(vat_);
         spotter = SpotterLike(spotter_);
         dog     = DogLike(dog_);
-        ilk     = ilk_;
+        crop    = CropJoinLike(crop_);
+        ilk     = CropJoinLike(crop_).ilk();
         buf     = RAY;
         wards[msg.sender] = 1;
         emit Rely(msg.sender);
@@ -227,7 +233,7 @@ contract CropClipper {
     function kick(
         uint256 tab,  // Debt                   [rad]
         uint256 lot,  // Collateral             [wad]
-        address usr,  // Address that will receive any leftover collateral
+        address usr,  // Address that will receive any leftover collateral; additionally assumed here to be the liquidated Vault.
         address kpr   // Address that will receive incentives
     ) external auth lock isStopped(1) returns (uint256 id) {
         // Input validation
@@ -259,6 +265,9 @@ contract CropClipper {
             coin = add(_tip, wmul(tab, _chip));
             vat.suck(vow, kpr, coin);
         }
+
+        // TODO: harvest rewards for user once a reverse UrnProxy mapping is implemented.
+        crop.tack(usr, address(this), lot);
 
         emit Kick(id, top, tab, lot, usr, kpr, coin);
     }
@@ -384,6 +393,7 @@ contract CropClipper {
 
             // Send collateral to who
             vat.flux(ilk, address(this), who, slice);
+            crop.tack(address(this, who, slice));  // Transfer stake+rewards
 
             // Do external call (if data is defined) but to be
             // extremely careful we don't allow to do it to the two
@@ -404,6 +414,7 @@ contract CropClipper {
             _remove(id);
         } else if (tab == 0) {
             vat.flux(ilk, address(this), usr, lot);
+            crop.tack(address(this, usr, lot));  // Transfer stake+rewards
             _remove(id);
         } else {
             sales[id].tab = tab;
@@ -464,7 +475,9 @@ contract CropClipper {
     function yank(uint256 id) external auth lock {
         require(sales[id].usr != address(0), "CropClipper/not-running-auction");
         dog.digs(ilk, sales[id].tab);
-        vat.flux(ilk, address(this), msg.sender, sales[id].lot);
+        uint256 lot = sales[id].lot;
+        vat.flux(ilk, address(this), msg.sender, lot);
+        crop.tack(address(this), msg.sender, lot);
         _remove(id);
         emit Yank(id);
     }
