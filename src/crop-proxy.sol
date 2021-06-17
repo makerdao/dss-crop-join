@@ -70,7 +70,7 @@ contract CropProxyLogic {
 
     function rely(address usr) public auth { wards[usr] = 1; emit Rely(msg.sender); }
     function deny(address usr) public auth { wards[usr] = 0; emit Deny(msg.sender); }
-    modifier auth { require(wards[msg.sender] == 1, "CropJoin/non-authed"); _; }
+    modifier auth { require(wards[msg.sender] == 1, "CropProxyLogic/non-authed"); _; }
 
 
     function setImplementation(address implementation_) external auth {
