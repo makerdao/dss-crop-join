@@ -136,8 +136,8 @@ contract CropJoin {
         stock = bonus.balanceOf(address(this));
     }
 
-    function join(address urn, uint256 val) public auth virtual {
-        harvest(urn, urn);
+    function join(address urn, address usr, uint256 val) public auth virtual {
+        harvest(urn, usr);
         if (val > 0) {
             uint256 wad = wdiv(mul(val, to18ConversionFactor), nps());
 

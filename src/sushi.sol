@@ -118,9 +118,9 @@ contract SushiJoin is CropJoin {
         return super.crop();
     }
 
-    function join(address usr, uint256 val) public override {
+    function join(address urn, address usr, uint256 val) public override {
         require(live, "SushiJoin/not-live");
-        super.join(usr, val);
+        super.join(urn, usr, val);
         masterchef.deposit(pid, val);
     }
 

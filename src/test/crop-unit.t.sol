@@ -89,10 +89,10 @@ contract Usr {
         Token(coin).approve(usr, uint(-1));
     }
     function join(address usr, uint wad) public {
-        adapter.join(usr, wad);
+        adapter.join(usr, usr, wad);
     }
     function join(uint wad) public {
-        adapter.join(address(this), wad);
+        adapter.join(address(this), address(this), wad);
     }
     function exit(address urn, address usr, uint wad) public {
         adapter.exit(urn, usr, wad);
@@ -104,7 +104,7 @@ contract Usr {
         return adapter.stake(address(this));
     }
     function reap() public {
-        adapter.join(address(this), 0);
+        adapter.join(address(this), address(this), 0);
     }
     function flee(address urn) public {
         adapter.flee(urn);
@@ -226,24 +226,24 @@ contract CropUnitTest is TestBase {
     function test_simple_join_exit() public {
         gem.approve(address(adapter), uint(-1));
 
-        adapter.join(address(this), 100 * 1e6);
+        adapter.join(address(this), address(this), 100 * 1e6);
         assertEq(bonus.balanceOf(self), 0 * 1e18, "no initial rewards");
 
         reward(address(adapter), 10 * 1e18);
-        adapter.join(address(this), 0);
+        adapter.join(address(this), address(this), 0);
         assertEq(bonus.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
-        adapter.join(address(this), 100 * 1e6);
+        adapter.join(address(this), address(this), 100 * 1e6);
         assertEq(bonus.balanceOf(self), 10 * 1e18, "rewards invariant over join");
 
         adapter.exit(address(this), address(this), 200 * 1e6);
         assertEq(bonus.balanceOf(self), 10 * 1e18, "rewards invariant over exit");
 
-        adapter.join(address(this), 50 * 1e6);
+        adapter.join(address(this), address(this), 50 * 1e6);
 
         assertEq(bonus.balanceOf(self), 10 * 1e18);
         reward(address(adapter), 10 * 1e18);
-        adapter.join(address(this), 10 * 1e6);
+        adapter.join(address(this), address(this), 10 * 1e6);
         assertEq(bonus.balanceOf(self), 20 * 1e18);
     }
     function test_complex_scenario() public {
@@ -369,11 +369,11 @@ contract CropUnitTest is TestBase {
     function test_flee() public {
         gem.approve(address(adapter), uint(-1));
 
-        adapter.join(address(this), 100 * 1e6);
+        adapter.join(address(this), address(this), 100 * 1e6);
         assertEq(bonus.balanceOf(self), 0 * 1e18, "no initial rewards");
 
         reward(address(adapter), 10 * 1e18);
-        adapter.join(address(this), 0);
+        adapter.join(address(this), address(this), 0);
         assertEq(bonus.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
         reward(address(adapter), 10 * 1e18);

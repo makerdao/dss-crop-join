@@ -27,12 +27,13 @@ interface VatLike {
 
 interface CropLike {
     function gem() external view returns (address);
-    function join(address, uint256) external;
+    function join(address, address, uint256) external;
     function exit(address, address, uint256) external;
     function flee(address) external;
 }
 
 interface TokenLike {
+    function approve(address, uint256) external;
     function transferFrom(address, address, uint256) external;
 }
 
@@ -118,8 +119,9 @@ contract CropProxyLogicImp {
     }
 
     function join(address crop, address urn, uint256 val) external {
+        TokenLike(CropLike(crop).gem()).approve(crop, val);
         TokenLike(CropLike(crop).gem()).transferFrom(msg.sender, address(this), val);
-        CropLike(crop).join(getProxy(urn), val);
+        CropLike(crop).join(getProxy(urn), urn, val);
     }
 
     function exit(address crop, address usr, uint256 val) external {

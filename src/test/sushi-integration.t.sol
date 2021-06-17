@@ -54,10 +54,10 @@ contract Usr {
     }
 
     function join(address usr, uint wad) public {
-        adapter.join(usr, wad);
+        adapter.join(usr, usr, wad);
     }
     function join(uint wad) public {
-        adapter.join(address(this), wad);
+        adapter.join(address(this), address(this), wad);
     }
     function exit(address urn, address usr, uint wad) public {
         adapter.exit(urn, usr, wad);
@@ -78,7 +78,7 @@ contract Usr {
         return adapter.bonus().balanceOf(address(this));
     }
     function reap() public {
-        adapter.join(address(this), 0);
+        adapter.join(address(this), address(this), 0);
     }
     function flee(address urn) public {
         adapter.flee(urn);
