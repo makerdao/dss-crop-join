@@ -17,12 +17,7 @@
 
 pragma solidity 0.6.12;
 
-interface VatLike {
-    function move(address,address,uint256) external;
-    function flux(bytes32,address,address,uint256) external;
-    function ilks(bytes32) external returns (uint256, uint256, uint256, uint256, uint256);
-    function suck(address,address,uint256) external;
-}
+import "./VatLike.sol";
 
 interface PipLike {
     function peek() external returns (bytes32, bool);
