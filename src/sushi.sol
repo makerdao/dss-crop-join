@@ -40,22 +40,6 @@ interface TimelockLike {
 }
 
 contract SushiJoin is CropJoin {
-
-    // --- Auth ---
-    mapping (address => uint256) public wards;
-    function rely(address usr) external auth {
-        wards[usr] = 1;
-        emit Rely(usr);
-    }
-    function deny(address usr) external auth {
-        wards[usr] = 0;
-        emit Deny(usr);
-    }
-    modifier auth {
-        require(wards[msg.sender] == 1, "SushiJoin/not-authorized");
-        _;
-    }
-
     MasterChefLike  immutable public masterchef;
     address                   public initialMigrator;
     TimelockLike              public timelockOwner;
@@ -105,7 +89,6 @@ contract SushiJoin is CropJoin {
         pid = pid_;
 
         ERC20(gem_).approve(masterchef_, uint256(-1));
-        wards[msg.sender] = 1;
         live = true;
     }
 
@@ -141,19 +124,19 @@ contract SushiJoin is CropJoin {
         masterchef.deposit(pid, val);
     }
 
-    function exit(address usr, uint256 val) public override {
+    function exit(address urn, address usr, uint256 val) public override {
         if (live) {
             masterchef.withdraw(pid, val);
         }
-        super.exit(usr, val);
+        super.exit(urn, usr, val);
     }
 
-    function flee() public override {
+    function flee(address urn) public override {
         if (live) {
             uint256 val = vat.gem(ilk, msg.sender);
             masterchef.withdraw(pid, val);
         }
-        super.flee();
+        super.flee(urn);
     }
     function cage() external {
         require(live, "SushiJoin/not-live");

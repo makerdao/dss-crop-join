@@ -59,11 +59,8 @@ contract Usr {
     function join(uint wad) public {
         adapter.join(address(this), wad);
     }
-    function exit(address usr, uint wad) public {
-        adapter.exit(usr, wad);
-    }
-    function exit(uint wad) public {
-        adapter.exit(address(this), wad);
+    function exit(address urn, address usr, uint wad) public {
+        adapter.exit(urn, usr, wad);
     }
     function crops() public view returns (uint256) {
         return adapter.crops(address(this));
@@ -83,8 +80,8 @@ contract Usr {
     function reap() public {
         adapter.join(address(this), 0);
     }
-    function flee() public {
-        adapter.flee();
+    function flee(address urn) public {
+        adapter.flee(urn);
     }
     function tack(address src, address dst, uint256 wad) public {
         adapter.tack(src, dst, wad);
@@ -192,6 +189,9 @@ contract SushiIntegrationTest is TestBase {
         user1.mintLPTokens(10**8, 10 ether);
         user2.mintLPTokens(10**8, 10 ether);
         user3.mintLPTokens(10**8, 10 ether);
+        join.rely(address(user1));
+        join.rely(address(user2));
+        join.rely(address(user3));
 
         assertTrue(user1.getLPBalance() > 0);
         assertTrue(user2.getLPBalance() > 0);
@@ -266,7 +266,7 @@ contract SushiIntegrationTest is TestBase {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
 
-        usr.exit(amount);
+        usr.exit(address(usr), address(usr), amount);
 
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), pstake - amount);
@@ -316,7 +316,7 @@ contract SushiIntegrationTest is TestBase {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
 
-        usr.flee();
+        usr.flee(address(usr));
 
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), 0);
@@ -468,9 +468,9 @@ contract SushiIntegrationTest is TestBase {
         hevm.roll(block.number + 100);
 
         // Each user should get half the rewards
-        user1.exit(bal1);
+        user1.exit(address(user1), address(user1), bal1);
         assertTrue(sushi.balanceOf(address(join)) > 0);
-        user2.exit(bal2);
+        user2.exit(address(user2), address(user2), bal2);
         assertTrue(sushi.balanceOf(address(join)) < 10);    // Join adapter should only be dusty
         assertTrue(sushi.balanceOf(address(user1)) > 0);
         assertEq(sushi.balanceOf(address(user1)), sushi.balanceOf(address(user2)));
@@ -505,7 +505,7 @@ contract SushiIntegrationTest is TestBase {
 
         // user2 should be able to take the rewards as well
         user2.tack(address(user1), address(user2), amount1);
-        user2.exit(amount1);
+        user2.exit(address(user2), address(user2), amount1);
 
         assertEq(user2.getLPBalance(), amount1 + amount2);
         assertTrue(user2.sushi() > 0);

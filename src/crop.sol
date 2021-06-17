@@ -33,6 +33,11 @@ interface ERC20 {
 
 // receives tokens and shares them among holders
 contract CropJoin {
+    // --- Auth ---
+    mapping (address => uint256) public wards;
+    function rely(address usr) public auth { wards[usr] = 1; emit Rely(msg.sender); }
+    function deny(address usr) public auth { wards[usr] = 0; emit Deny(msg.sender); }
+    modifier auth { require(wards[msg.sender] == 1, "CropJoin/non-authed"); _; }
 
     VatLike     public immutable vat;    // cdp engine
     bytes32     public immutable ilk;    // collateral type
@@ -51,6 +56,8 @@ contract CropJoin {
     uint256 immutable internal toGemConversionFactor;
 
     // --- Events ---
+    event Rely(address indexed);
+    event Deny(address indexed);
     event Join(uint256 val);
     event Exit(uint256 val);
     event Flee();
@@ -67,6 +74,8 @@ contract CropJoin {
         toGemConversionFactor = 10 ** dec_;
 
         bonus = ERC20(bonus_);
+        wards[msg.sender] = 1;
+        emit Rely(msg.sender);
     }
 
     function add(uint256 x, uint256 y) public pure returns (uint256 z) {
@@ -127,7 +136,7 @@ contract CropJoin {
         stock = bonus.balanceOf(address(this));
     }
 
-    function join(address urn, uint256 val) public virtual {
+    function join(address urn, uint256 val) public auth virtual {
         harvest(urn, urn);
         if (val > 0) {
             uint256 wad = wdiv(mul(val, to18ConversionFactor), nps());
@@ -146,8 +155,8 @@ contract CropJoin {
         emit Join(val);
     }
 
-    function exit(address guy, uint256 val) public virtual {
-        harvest(msg.sender, guy);
+    function exit(address urn, address usr, uint256 val) public auth virtual {
+        harvest(urn, usr);
         if (val > 0) {
             uint256 wad = wdivup(mul(val, to18ConversionFactor), nps());
 
@@ -155,27 +164,27 @@ contract CropJoin {
             // Also enforces a non-zero wad
             require(int256(wad) > 0);
 
-            require(gem.transfer(guy, val));
-            vat.slip(ilk, msg.sender, -int256(wad));
+            require(gem.transfer(usr, val));
+            vat.slip(ilk, urn, -int256(wad));
 
             total = sub(total, wad);
-            stake[msg.sender] = sub(stake[msg.sender], wad);
+            stake[urn] = sub(stake[urn], wad);
         }
-        crops[msg.sender] = rmulup(stake[msg.sender], share);
+        crops[urn] = rmulup(stake[urn], share);
         emit Exit(val);
     }
 
-    function flee() public virtual {
-        uint256 wad = vat.gem(ilk, msg.sender);
+    function flee(address urn) public auth virtual {
+        uint256 wad = vat.gem(ilk, urn);
         require(wad <= 2 ** 255);
         uint256 val = wmul(wmul(wad, nps()), toGemConversionFactor);
 
-        require(gem.transfer(msg.sender, val));
-        vat.slip(ilk, msg.sender, -int256(wad));
+        require(gem.transfer(urn, val));
+        vat.slip(ilk, urn, -int256(wad));
 
         total = sub(total, wad);
-        stake[msg.sender] = sub(stake[msg.sender], wad);
-        crops[msg.sender] = rmulup(stake[msg.sender], share);
+        stake[urn] = sub(stake[urn], wad);
+        crops[urn] = rmulup(stake[urn], share);
 
         emit Flee();
     }

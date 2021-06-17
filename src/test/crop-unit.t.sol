@@ -94,11 +94,8 @@ contract Usr {
     function join(uint wad) public {
         adapter.join(address(this), wad);
     }
-    function exit(address usr, uint wad) public {
-        adapter.exit(usr, wad);
-    }
-    function exit(uint wad) public {
-        adapter.exit(address(this), wad);
+    function exit(address urn, address usr, uint wad) public {
+        adapter.exit(urn, usr, wad);
     }
     function crops() public view returns (uint256) {
         return adapter.crops(address(this));
@@ -109,8 +106,8 @@ contract Usr {
     function reap() public {
         adapter.join(address(this), 0);
     }
-    function flee() public {
-        adapter.flee();
+    function flee(address urn) public {
+        adapter.flee(urn);
     }
     function tack(address src, address dst, uint256 wad) public {
         adapter.tack(src, dst, wad);
@@ -139,12 +136,11 @@ contract Usr {
         ok = abi.decode(success, (bool));
         if (ok) return true;
     }
-    function can_exit(uint val) public returns (bool) {
+    function can_exit(address urn, address usr, uint val) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
-            ("exit(address,uint256)", address(this), val);
+            ("exit(address,address,uint256)", urn, usr, val);
         return can_call(address(adapter), call);
     }
-
 }
 
 contract CropUnitTest is TestBase {
@@ -170,6 +166,8 @@ contract CropUnitTest is TestBase {
     function init_user(uint cash) internal returns (Usr a, Usr b) {
         a = new Usr(adapter);
         b = new Usr(adapter);
+        adapter.rely(address(a));
+        adapter.rely(address(b));
 
         gem.transfer(address(a), cash);
         gem.transfer(address(b), cash);
@@ -238,7 +236,7 @@ contract CropUnitTest is TestBase {
         adapter.join(address(this), 100 * 1e6);
         assertEq(bonus.balanceOf(self), 10 * 1e18, "rewards invariant over join");
 
-        adapter.exit(address(this), 200 * 1e6);
+        adapter.exit(address(this), address(this), 200 * 1e6);
         assertEq(bonus.balanceOf(self), 10 * 1e18, "rewards invariant over exit");
 
         adapter.join(address(this), 50 * 1e6);
@@ -279,7 +277,7 @@ contract CropUnitTest is TestBase {
         assertEq(bonus.balanceOf(address(a)), 80 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 50 * 1e18);
 
-        b.exit(20 * 1e6);
+        b.exit(address(b), address(b), 20 * 1e6);
     }
 
     // a user's balance can be altered with vat.flux, check that this
@@ -314,14 +312,14 @@ contract CropUnitTest is TestBase {
 
         assertEq(gem.balanceOf(address(a)), 100e6,  "a balance before exit");
         assertEq(adapter.stake(address(a)),     100e18, "a join balance before");
-        a.exit(50 * 1e6);
+        a.exit(address(a), address(a), 50 * 1e6);
         assertEq(gem.balanceOf(address(a)), 150e6,  "a balance after exit");
         assertEq(adapter.stake(address(a)),      50e18, "a join balance after");
 
         assertEq(gem.balanceOf(address(b)), 200e6,  "b balance before exit");
         assertEq(adapter.stake(address(b)),       0e18, "b join balance before");
         adapter.tack(address(a), address(b),     50e18);
-        b.flee();
+        b.flee(address(b));
         assertEq(gem.balanceOf(address(b)), 250e6,  "b balance after exit");
         assertEq(adapter.stake(address(b)),       0e18, "b join balance after");
     }
@@ -334,21 +332,21 @@ contract CropUnitTest is TestBase {
         a.join(0);
         assertEq(bonus.balanceOf(address(a)), 50 * 1e18, "rewards increase with reap");
 
-        assertTrue( a.can_exit( 50e6), "can exit before flux");
+        assertTrue( a.can_exit(address(a), address(a), 50e6), "can exit before flux");
         vat.flux(ilk, address(a), address(b), 100e18);
         reward(address(adapter), 50e18);
 
         // if x gems are transferred from a to b, a will continue to earn
         // rewards on x, while b will not earn anything on x, until we
         // reset balances with `tack`
-        assertTrue(!a.can_exit(100e6), "can't full exit after flux");
+        assertTrue(!a.can_exit(address(a), address(a), 100e6), "can't full exit after flux");
         assertEq(adapter.stake(address(a)),     100e18);
-        a.exit(0);
+        a.exit(address(a), address(a), 0);
 
         assertEq(bonus.balanceOf(address(a)), 100e18, "can claim remaining rewards");
 
         reward(address(adapter), 50e18);
-        a.exit(0);
+        a.exit(address(a), address(a), 0);
 
         assertEq(bonus.balanceOf(address(a)), 150e18, "rewards continue to accrue");
 
@@ -356,7 +354,7 @@ contract CropUnitTest is TestBase {
 
         adapter.tack(address(a), address(b),    100e18);
         reward(address(adapter), 50e18);
-        a.exit(0);
+        a.exit(address(a), address(a), 0);
 
         assertEq(bonus.balanceOf(address(a)), 150e18, "rewards no longer increase");
 
@@ -379,12 +377,12 @@ contract CropUnitTest is TestBase {
         assertEq(bonus.balanceOf(self), 10 * 1e18, "rewards increase with reap");
 
         reward(address(adapter), 10 * 1e18);
-        adapter.exit(address(this), 50 * 1e6);
+        adapter.exit(address(this), address(this), 50 * 1e6);
         assertEq(bonus.balanceOf(self), 20 * 1e18, "rewards increase with exit");
 
         reward(address(adapter), 10 * 1e18);
         assertEq(gem.balanceOf(self),  950e6, "balance before flee");
-        adapter.flee();
+        adapter.flee(address(this));
         assertEq(bonus.balanceOf(self), 20 * 1e18, "rewards invariant over flee");
         assertEq(gem.balanceOf(self), 1000e6, "balance after flee");
     }
@@ -415,8 +413,8 @@ contract CropUnitTest is TestBase {
         b.join(0);
 
         reward(address(adapter), 50e18);
-        a.exit(0);
-        b.exit(100e6);
+        a.exit(address(a), address(a), 0);
+        b.exit(address(b), address(b), 100e6);
         assertEq(bonus.balanceOf(address(a)), 50e18, "a rewards");
         assertEq(bonus.balanceOf(address(b)), 50e18, "b rewards");
 
@@ -430,8 +428,8 @@ contract CropUnitTest is TestBase {
         adapter.tack(address(a), address(b), 100e18);
 
         reward(address(adapter), 50e18);
-        a.exit(0);
-        b.exit(100e6);
+        a.exit(address(a), address(a), 0);
+        b.exit(address(b), address(b), 100e6);
         assertEq(bonus.balanceOf(address(a)),  50e18, "a rewards alt");
         assertEq(bonus.balanceOf(address(b)), 150e18, "b rewards alt");
     }
@@ -461,7 +459,7 @@ contract CropUnitTest is TestBase {
         
         // B withdraws to A (rewards also go to A)
         reward(address(adapter), 50e18);
-        b.exit(address(a), 100e6);
+        b.exit(address(b), address(a), 100e6);
         assertEq(gem.balanceOf(address(a)), 200e6);
         assertEq(gem.balanceOf(address(b)), 200e6);
         assertEq(a.crops(), 0);
@@ -507,11 +505,11 @@ contract CropUnitTest is TestBase {
         // both collect rewards, which are now split equally
 
         assertEq(bonus.balanceOf(address(a)), 0);
-        a.exit(0);
+        a.exit(address(a), address(a), 0);
         assertEq(bonus.balanceOf(address(a)), 25e18);
 
         assertEq(bonus.balanceOf(address(b)), 0);
-        b.exit(0);
+        b.exit(address(b), address(b), 0);
         assertEq(bonus.balanceOf(address(b)), 25e18);
 
         // That wasn't too interesting since crops(a) started at zero.
@@ -538,13 +536,13 @@ contract CropUnitTest is TestBase {
 
         // when a exits, they get 2/5 of 50e18, i.e. 20e18
         uint256 preBonusBal = bonus.balanceOf(address(a));
-        a.exit(0);
+        a.exit(address(a), address(a), 0);
         uint256 diff = sub(bonus.balanceOf(address(a)), preBonusBal);
         assertEq(diff, 20e18);
 
         // when b exits, they get the 3/5 of 50e18 rewards transferred from a
         preBonusBal = bonus.balanceOf(address(b));
-        b.exit(0);
+        b.exit(address(b), address(b), 0);
         diff = sub(bonus.balanceOf(address(b)), preBonusBal);
         assertEq(diff, 30e18);
 
@@ -552,7 +550,7 @@ contract CropUnitTest is TestBase {
 
         uint256 preGemBal = gem.balanceOf(address(a));
         preBonusBal = bonus.balanceOf(address(a));
-        a.exit(20e6);
+        a.exit(address(a), address(a), 20e6);
         diff = sub(gem.balanceOf(address(a)), preGemBal);
         assertEq(diff, 20e6);
         assertEq(adapter.stake(address(a)), 0);
@@ -560,7 +558,7 @@ contract CropUnitTest is TestBase {
 
         preGemBal = gem.balanceOf(address(b));
         preBonusBal = bonus.balanceOf(address(b));
-        b.exit(280e6);
+        b.exit(address(b), address(b), 280e6);
         diff = sub(gem.balanceOf(address(b)), preGemBal);
         assertEq(diff, 280e6);
         assertEq(adapter.stake(address(b)), 0);
