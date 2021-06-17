@@ -48,6 +48,7 @@ interface AbacusLike {
 
 interface CropJoinLike {
     function tack(address, address, uint256) external;
+    function proxy(address) external returns(address);
 }
 
 contract CropClipper {
@@ -391,9 +392,13 @@ contract CropClipper {
             // Calculate remaining lot after operation
             lot = lot - slice;
 
-            // Send collateral to who
-            vat.flux(ilk, address(this), who, slice);
-            crop.tack(address(this, who, slice));  // Transfer stake+rewards
+            // Send collateral to the UrnProxy of who
+            {
+                address urp = crop.proxy(who);
+                require(urp != address(0), "CropClipper/no-urn-proxy");
+                vat.flux(ilk, address(this), urp, slice);
+                crop.tack(address(this, urp, slice));  // Transfer stake+rewards
+            }
 
             // Do external call (if data is defined) but to be
             // extremely careful we don't allow to do it to the two
