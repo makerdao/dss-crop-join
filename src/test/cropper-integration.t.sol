@@ -96,7 +96,7 @@ contract CropperIntegrationTest is TestBase {
 
         // Set up pricing
         abacus = new Abacus();
-        abacus.set(pip.val());
+        abacus.set(mul(pip.val(), 10**9));
         cropper.file("calc", address(abacus));
 
         // Create Vault
@@ -108,6 +108,14 @@ contract CropperIntegrationTest is TestBase {
         // Accrue rewards
         bonus.transfer(address(join), 10**4 * WAD);  // 10 bonus tokens per joined gem
 
+        // Draw some DAI for this contract for bidding on auctions.
+        // This conveniently provisions an UrnProxy for the test contract as well.
+        join.join(address(this), 10**4 * WAD);
+        join.frob(int256(10**4 * WAD), int256(1000 * WAD));
+
+        // Hope the cropper so we can bid.
+        vat.hope(address(cropper));
+
         // Simulate fee collection; usr's Vault becomes unsafe.
         vat.fold(ILK, cropper.vow(), int256(RAY / 5));
     }
@@ -118,5 +126,42 @@ contract CropperIntegrationTest is TestBase {
         dog.bark(ILK, usr.urp(), address(this));
         assertEq(usr.stake(), 0);
         assertEq(join.stake(address(cropper)), 10**3 * WAD);
+    }
+
+    function test_take_all() public {
+        address urp = join.proxy(address(this));
+        uint256 initialStake    = join.stake(urp);
+        uint256 initialGemBal   = gem.balanceOf(address(this));
+        uint256 initialBonusBal = bonus.balanceOf(address(this));
+
+        uint256 id = dog.bark(ILK, usr.urp(), address(this));
+
+        // Quarter of a DAI per gem--this means the total value of collateral is 250 DAI,
+        // which is less than the tab. Thus we'll purchase 100% of the collateral.
+        uint256 price = 25 * RAY / 100;
+        abacus.set(price);
+
+        // Assert that the statement above is indeed true.
+        (, uint256 tab, uint256 lot,,,) = cropper.sales(id);
+        assertTrue(mul(lot, price) < tab);
+
+        // Ensure that we have enough DAI to cover our purchase.
+        assertTrue(mul(lot, price) < vat.dai(address(this)));
+
+        bytes memory emptyBytes;
+        cropper.take(id, lot, price, address(this), emptyBytes);
+
+        (, tab, lot,,,) = cropper.sales(id);
+        assertEq(tab, 0);
+        assertEq(lot, 0);
+
+        // The collateral has been transferred to us.
+        assertEq(join.stake(urp), add(10**3 * WAD, initialStake));
+
+        // We can exit, withdrawing the full reward (10^4 bonus tokens), without needing to tack.
+        join.exit(address(this), 10**3 * WAD);
+        assertEq(join.stake(urp), initialStake);
+        assertEq(gem.balanceOf(address(this)), add(initialGemBal, 10**3 * WAD));
+        assertEq(bonus.balanceOf(address(this)), add(initialBonusBal, 10**4 * WAD));
     }
 }
