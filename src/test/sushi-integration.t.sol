@@ -19,6 +19,7 @@ pragma solidity 0.6.12;
 import "dss-interfaces/Interfaces.sol";
 
 import "./base.sol";
+import "./crop-usr.sol";
 import "../sushi.sol";
 
 interface SushiLPLike is ERC20 {
@@ -27,19 +28,16 @@ interface SushiLPLike is ERC20 {
     function token1() external view returns (address);
 }
 
-contract Usr {
+contract Usr is CropUsr {
 
     Hevm hevm;
-    VatAbstract vat;
-    SushiJoin adapter;
-    address public urp;
     SushiLPLike pair;
     ERC20 wbtc;
     ERC20 weth;
     MasterChefLike masterchef;
     uint256 pid;
 
-    constructor(Hevm hevm_, SushiJoin join_, SushiLPLike pair_) public {
+    constructor(Hevm hevm_, SushiJoin join_, SushiLPLike pair_) public CropUsr(CropJoin(join_)) {
         hevm = hevm_;
         adapter = join_;
         pair = pair_;
@@ -47,51 +45,21 @@ contract Usr {
         adapter.join(address(this), 0);  // Create UrnProxy
         urp = adapter.proxy(address(this));
 
-        vat = VatAbstract(address(adapter.vat()));
-        masterchef = adapter.masterchef();
+        adapter = join_;
+        masterchef = join_.masterchef();
         wbtc = ERC20(pair.token0());
         weth = ERC20(pair.token1());
-        pid = adapter.pid();
+        pid = join_.pid();
 
         pair.approve(address(adapter), uint(-1));
         pair.approve(address(masterchef), uint(-1));
     }
 
-    function join(address usr, uint wad) public {
-        adapter.join(usr, wad);
-    }
-    function join(uint wad) public {
-        adapter.join(address(this), wad);
-    }
-    function exit(address usr, uint wad) public {
-        adapter.exit(usr, wad);
-    }
-    function exit(uint wad) public {
-        adapter.exit(address(this), wad);
-    }
-    function crops() public view returns (uint256) {
-        return adapter.crops(urp);
-    }
-    function stake() public view returns (uint256) {
-        return adapter.stake(urp);
-    }
-    function gems() public view returns (uint256) {
-        return vat.gem(adapter.ilk(), urp);
-    }
     function masterchefRewards() public view returns (uint256) {
-        return masterchef.pendingSushi(adapter.pid(), address(this));
+        return masterchef.pendingSushi(SushiJoin(address(adapter)).pid(), address(this));
     }
     function sushi() public view returns (uint256) {
-        return adapter.bonus().balanceOf(address(this));
-    }
-    function reap() public {
-        adapter.join(address(this), 0);
-    }
-    function flee() public {
-        adapter.flee();
-    }
-    function tack(address src, address dst, uint256 wad) public {
-        adapter.tack(src, dst, wad);
+        return bonusBalance();
     }
     function set_wbtc(uint val) internal {
         hevm.store(
@@ -126,20 +94,14 @@ contract Usr {
     function getMasterchefDepositAmount() public view returns (uint256 amount) {
         (amount,) = masterchef.userInfo(pid, address(this));
     }
-    function hope(address usr) public {
-        vat.hope(usr);
-    }
     function cage() public {
-        adapter.cage();
+        SushiJoin(address(adapter)).cage();
     }
     function cage(uint256 value, string memory signature, bytes memory data, uint256 eta) public {
-        adapter.cage(value, signature, data, eta);
+        SushiJoin(address(adapter)).cage(value, signature, data, eta);
     }
     function transfer(address to, uint val) public {
         pair.transfer(to, val);
-    }
-    function frob(int256 dink, int256 dart) public {
-        adapter.frob(dink, dart);
     }
 }
 
