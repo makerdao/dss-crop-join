@@ -16,8 +16,6 @@
 
 pragma solidity 0.6.12;
 
-import "dss-interfaces/Interfaces.sol";
-
 import "./base.sol";
 import {CropJoin} from "../crop.sol";
 import "../crop-proxy.sol";

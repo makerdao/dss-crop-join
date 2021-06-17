@@ -16,10 +16,16 @@
 
 pragma solidity 0.6.12;
 
-import "dss-interfaces/Interfaces.sol";
-
 import "./base.sol";
-import "../sushi.sol";
+import {ERC20, MasterChefLike, SushiJoin, TimelockLike} from "../sushi.sol";
+
+interface VatLike {
+    function wards(address) external view returns (uint256);
+    function rely(address) external;
+    function hope(address) external;
+    function gem(bytes32, address) external view returns (uint256);
+    function flux(bytes32, address, address, uint256) external;
+}
 
 interface SushiLPLike is ERC20 {
     function mint(address to) external returns (uint256);
@@ -30,7 +36,7 @@ interface SushiLPLike is ERC20 {
 contract Usr {
 
     Hevm hevm;
-    VatAbstract vat;
+    VatLike vat;
     SushiJoin adapter;
     SushiLPLike pair;
     ERC20 wbtc;
@@ -43,7 +49,7 @@ contract Usr {
         adapter = join_;
         pair = pair_;
 
-        vat = VatAbstract(address(adapter.vat()));
+        vat = VatLike(address(adapter.vat()));
         masterchef = adapter.masterchef();
         wbtc = ERC20(pair.token0());
         weth = ERC20(pair.token1());
@@ -140,7 +146,7 @@ contract SushiIntegrationTest is TestBase {
     SushiLPLike pair;
     ERC20 sushi;
     MasterChefLike masterchef;
-    VatAbstract vat;
+    VatLike vat;
     bytes32 ilk = "SUSHIWBTCETH-A";
     SushiJoin join;
     address migrator;
@@ -153,7 +159,7 @@ contract SushiIntegrationTest is TestBase {
     uint256 dust = 100; // Small amount to account for division rounding errors
 
     function setUp() public {
-        vat = VatAbstract(0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B);
+        vat = VatLike(0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B);
         pair = SushiLPLike(0xCEfF51756c56CeFFCA006cD410B03FFC46dd3a58);
         sushi = ERC20(0x6B3595068778DD592e39A122f4f5a5cF09C90fE2);
         masterchef = MasterChefLike(0xc2EdaD668740f1aA35E4D8f227fB8E17dcA888Cd);
