@@ -212,4 +212,28 @@ contract CropperIntegrationTest is TestBase {
         assertEq(gem.balanceOf(address(usr)), collateralReturned);
         assertEq(bonus.balanceOf(address(usr)), mul(10**4 * WAD, collateralReturned) / (10**3 * WAD));
     }
+
+    function test_yank() public {
+        address urp = join.proxy(address(this));
+        uint256 initialStake    = join.stake(urp);
+        uint256 initialGemBal   = gem.balanceOf(address(this));
+        uint256 initialBonusBal = bonus.balanceOf(address(this));
+
+        uint256 id = dog.bark(ILK, usr.urp(), address(this));
+
+        cropper.yank(id);
+
+        // The collateral has been transferred to this contract specifically--
+        // yank gets called by the End, which has no UrnProxy.
+        assertEq(join.stake(address(this)), 10**3 * WAD);
+
+        // We can exit if we flux and tack to our UrnProxy.
+        vat.flux(ILK, address(this), urp, 10**3 * WAD);
+        join.tack(address(this), urp, 10**3 * WAD);
+        assertEq(join.stake(urp), add(10**3 * WAD, initialStake));
+        join.exit(address(this), 10**3 * WAD);
+        assertEq(join.stake(urp), initialStake);
+        assertEq(gem.balanceOf(address(this)), add(initialGemBal, 10**3 * WAD));
+        assertEq(bonus.balanceOf(address(this)), add(initialBonusBal, 10**4 * WAD));
+    }
 }
