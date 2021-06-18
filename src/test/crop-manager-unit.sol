@@ -18,36 +18,36 @@ pragma solidity 0.6.12;
 
 import "./base.sol";
 import {CropJoin} from "../crop.sol";
-import "../crop-proxy.sol";
+import "../crop-manager.sol";
 import {MockVat, Token} from "./crop-unit.t.sol";
 
 contract Usr {
 
     CropJoin adapter;
-    CropProxyLogicImp proxyLogic;
+    CropJoinManagerImp manager;
 
-    constructor(CropJoin adapter_, CropProxyLogicImp proxyLogic_) public {
+    constructor(CropJoin adapter_, CropJoinManagerImp manager_) public {
         adapter = adapter_;
-        proxyLogic = proxyLogic_;
+        manager = manager_;
     }
 
     function approve(address coin, address usr) public {
         Token(coin).approve(usr, uint(-1));
     }
     function join(address usr, uint wad) public {
-        proxyLogic.join(address(adapter), usr, wad);
+        manager.join(address(adapter), usr, wad);
     }
     function join(uint wad) public {
-        proxyLogic.join(address(adapter), address(this), wad);
+        manager.join(address(adapter), address(this), wad);
     }
     function exit(address usr, uint wad) public {
-        proxyLogic.exit(address(adapter), usr, wad);
+        manager.exit(address(adapter), usr, wad);
     }
     function exit(uint wad) public {
-        proxyLogic.exit(address(adapter), address(this), wad);
+        manager.exit(address(adapter), address(this), wad);
     }
     function proxy() public view returns (address) {
-        return proxyLogic.proxy(address(this));
+        return manager.proxy(address(this));
     }
     function crops() public view returns (uint256) {
         return adapter.crops(proxy());
@@ -59,10 +59,10 @@ contract Usr {
         return adapter.vat().gem(adapter.ilk(), proxy());
     }
     function reap() public {
-        proxyLogic.join(address(adapter), address(this), 0);
+        manager.join(address(adapter), address(this), 0);
     }
     function flee() public {
-        proxyLogic.flee(address(adapter));
+        manager.flee(address(adapter));
     }
 
     function try_call(address addr, bytes calldata data) external returns (bool) {
@@ -88,7 +88,7 @@ contract Usr {
     function can_exit(address usr, uint val) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
             ("exit(address,address,uint256)", address(adapter), usr, val);
-        return can_call(address(proxyLogic), call);
+        return can_call(address(manager), call);
     }
 }
 
@@ -100,7 +100,7 @@ contract CropProxyUnitTest is TestBase {
     address             self;
     bytes32             ilk = "TOKEN-A";
     CropJoin            adapter;
-    CropProxyLogicImp   proxyLogic;
+    CropJoinManagerImp  manager;
 
     function setUp() public virtual {
         self = address(this);
@@ -108,26 +108,26 @@ contract CropProxyUnitTest is TestBase {
         bonus = new Token(18, 0);
         vat = new MockVat();
         adapter = new CropJoin(address(vat), ilk, address(gem), address(bonus));
-        CropProxyLogic base = new CropProxyLogic();
-        base.setImplementation(address(new CropProxyLogicImp(address(vat))));
-        proxyLogic = CropProxyLogicImp(address(base));
+        CropJoinManager base = new CropJoinManager();
+        base.setImplementation(address(new CropJoinManagerImp(address(vat))));
+        manager = CropJoinManagerImp(address(base));
 
-        adapter.rely(address(proxyLogic));
-        adapter.deny(address(this));    // Only access should be through proxyLogic
+        adapter.rely(address(manager));
+        adapter.deny(address(this));    // Only access should be through manager
     }
 
     function init_user() internal returns (Usr a, Usr b) {
         return init_user(200 * 1e6);
     }
     function init_user(uint cash) internal returns (Usr a, Usr b) {
-        a = new Usr(adapter, proxyLogic);
-        b = new Usr(adapter, proxyLogic);
+        a = new Usr(adapter, manager);
+        b = new Usr(adapter, manager);
 
         gem.transfer(address(a), cash);
         gem.transfer(address(b), cash);
 
-        a.approve(address(gem), address(proxyLogic));
-        b.approve(address(gem), address(proxyLogic));
+        a.approve(address(gem), address(manager));
+        b.approve(address(gem), address(manager));
     }
 
     function reward(address usr, uint wad) internal virtual {

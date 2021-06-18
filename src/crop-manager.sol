@@ -55,7 +55,7 @@ contract UrnProxy {
     }
 }
 
-contract CropProxyLogic {
+contract CropJoinManager {
     mapping (address => uint256) public wards;
     mapping (address => address) public proxy;  // UrnProxy per user
     address public implementation;
@@ -71,7 +71,7 @@ contract CropProxyLogic {
 
     function rely(address usr) public auth { wards[usr] = 1; emit Rely(msg.sender); }
     function deny(address usr) public auth { wards[usr] = 0; emit Deny(msg.sender); }
-    modifier auth { require(wards[msg.sender] == 1, "CropProxyLogic/non-authed"); _; }
+    modifier auth { require(wards[msg.sender] == 1, "CropJoinManager/non-authed"); _; }
 
 
     function setImplementation(address implementation_) external auth {
@@ -97,7 +97,7 @@ contract CropProxyLogic {
     }
 }
 
-contract CropProxyLogicImp {
+contract CropJoinManagerImp {
     bytes32 slot0;
     mapping (address => address) public proxy;  // UrnProxy per user
 
@@ -111,11 +111,6 @@ contract CropProxyLogicImp {
         if (urp == address(0)) {
             urp = proxy[usr] = address(new UrnProxy(address(vat)));
         }
-    }
-
-    function toInt(uint256 x) internal pure returns (int256 y) {
-        y = int256(x);
-        require(y >= 0);
     }
 
     function join(address crop, address urn, uint256 val) external {
@@ -138,16 +133,18 @@ contract CropProxyLogicImp {
     }
 
     function quit(bytes32 ilk, address dst) external {
-        require(VatLike(vat).live() == 0, "CropProxyLogic/vat-still-live");
+        require(VatLike(vat).live() == 0, "CropJoinManager/vat-still-live");
 
         address urp = getProxy(msg.sender);
         (uint256 ink, uint256 art) = VatLike(vat).urns(ilk, urp);
+        require(int256(ink) >= 0, "CropJoinManager/overflow");
+        require(int256(art) >= 0, "CropJoinManager/overflow");
         VatLike(vat).fork(
             ilk,
             urp,
             dst,
-            toInt(ink),
-            toInt(art)
+            int256(ink),
+            int256(art)
         );
     }
 }
