@@ -79,6 +79,9 @@ contract Usr {
     function flux(address src, address dst, uint256 wad) public {
         manager.flux(address(adapter), src, dst, wad);
     }
+    function quit() public {
+        manager.quit(adapter.ilk(), address(this));
+    }
     function quit(address dst) public {
         manager.quit(adapter.ilk(), dst);
     }
@@ -225,6 +228,78 @@ contract CropJoinManagerTest is TestBase {
         assertEq(bonus.balanceOf(address(b)), 50e18);
     }
 
+    function test_simple_multi_user() public {
+        (Usr a, Usr b) = init_user();
+
+        a.join(60 * 1e6);
+        b.join(40 * 1e6);
+
+        reward(address(adapter), 50 * 1e18);
+
+        a.join(0);
+        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
+        assertEq(bonus.balanceOf(address(b)),  0 * 1e18);
+
+        b.join(0);
+        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
+        assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
+    }
+
+    function test_simple_multi_reap() public {
+        (Usr a, Usr b) = init_user();
+
+        a.join(60 * 1e6);
+        b.join(40 * 1e6);
+
+        reward(address(adapter), 50 * 1e18);
+
+        a.join(0);
+        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
+        assertEq(bonus.balanceOf(address(b)),  0 * 1e18);
+
+        b.join(0);
+        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
+        assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
+
+        a.join(0); b.reap();
+        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
+        assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
+    }
+
+    function test_complex_scenario() public {
+        (Usr a, Usr b) = init_user();
+
+        a.join(60 * 1e6);
+        b.join(40 * 1e6);
+
+        reward(address(adapter), 50 * 1e18);
+
+        a.join(0);
+        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
+        assertEq(bonus.balanceOf(address(b)),  0 * 1e18);
+
+        b.join(0);
+        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
+        assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
+
+        a.join(0); b.reap();
+        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
+        assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
+
+        reward(address(adapter), 50 * 1e18);
+        a.join(20 * 1e6);
+        a.join(0); b.reap();
+        assertEq(bonus.balanceOf(address(a)), 60 * 1e18);
+        assertEq(bonus.balanceOf(address(b)), 40 * 1e18);
+
+        reward(address(adapter), 30 * 1e18);
+        a.join(0); b.reap();
+        assertEq(bonus.balanceOf(address(a)), 80 * 1e18);
+        assertEq(bonus.balanceOf(address(b)), 50 * 1e18);
+
+        b.exit(20 * 1e6);
+    }
+
     function test_frob() public {
         (Usr a,) = init_user();
         a.join(100 * 1e6);
@@ -280,73 +355,24 @@ contract CropJoinManagerTest is TestBase {
         a.flux(address(b), address(a), 100 * 1e18);
     }
 
-    function test_simple_multi_user() public {
-        (Usr a, Usr b) = init_user();
-
-        a.join(60 * 1e6);
-        b.join(40 * 1e6);
-
-        reward(address(adapter), 50 * 1e18);
-
-        a.join(0);
-        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
-        assertEq(bonus.balanceOf(address(b)),  0 * 1e18);
-
-        b.join(0);
-        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
-        assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
+    function testFail_quit() public {
+        (Usr a,) = init_user();
+        a.join(100 * 1e6);
+        a.quit();       // Attempt to unbox the gems (should fail when vat is live)
     }
-    function test_simple_multi_reap() public {
-        (Usr a, Usr b) = init_user();
 
-        a.join(60 * 1e6);
-        b.join(40 * 1e6);
-
-        reward(address(adapter), 50 * 1e18);
-
-        a.join(0);
-        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
-        assertEq(bonus.balanceOf(address(b)),  0 * 1e18);
-
-        b.join(0);
-        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
-        assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
-
-        a.join(0); b.reap();
-        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
-        assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
-    }
-    function test_complex_scenario() public {
-        (Usr a, Usr b) = init_user();
-
-        a.join(60 * 1e6);
-        b.join(40 * 1e6);
-
-        reward(address(adapter), 50 * 1e18);
-
-        a.join(0);
-        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
-        assertEq(bonus.balanceOf(address(b)),  0 * 1e18);
-
-        b.join(0);
-        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
-        assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
-
-        a.join(0); b.reap();
-        assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
-        assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
-
-        reward(address(adapter), 50 * 1e18);
-        a.join(20 * 1e6);
-        a.join(0); b.reap();
-        assertEq(bonus.balanceOf(address(a)), 60 * 1e18);
-        assertEq(bonus.balanceOf(address(b)), 40 * 1e18);
-
-        reward(address(adapter), 30 * 1e18);
-        a.join(0); b.reap();
-        assertEq(bonus.balanceOf(address(a)), 80 * 1e18);
-        assertEq(bonus.balanceOf(address(b)), 50 * 1e18);
-
-        b.exit(20 * 1e6);
+    function test_quit() public {
+        (Usr a,) = init_user();
+        a.join(100 * 1e6);
+        vat.cage();
+        assertEq(vat.gem(ilk, a.proxy()), 100 * 1e18);
+        assertEq(adapter.stake(a.proxy()), 100 * 1e18);
+        assertEq(vat.gem(ilk, address(a)), 0);
+        assertEq(adapter.stake(address(a)), 0);
+        a.quit();
+        assertEq(vat.gem(ilk, a.proxy()), 0);
+        assertEq(adapter.stake(a.proxy()), 0);
+        assertEq(vat.gem(ilk, address(a)), 100 * 1e18);
+        assertEq(adapter.stake(address(a)), 100 * 1e18);
     }
 }

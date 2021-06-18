@@ -27,6 +27,7 @@ contract MockVat {
     mapping (bytes32 => mapping (address => uint)) public gem;
     mapping (bytes32 => mapping (address => Urn)) public urns;
     mapping (address => uint) public dai;
+    uint256 public live = 1;
     function add(uint x, int y) internal pure returns (uint z) {
         z = x + uint(y);
         require(y >= 0 || z <= x, "vat/add-fail");
@@ -59,6 +60,9 @@ contract MockVat {
         gem[ilk][dst] = add(gem[ilk][dst], wad);
     }
     function hope(address usr) external {}
+    function cage() external {
+        live = 0;
+    }
 }
 
 contract Token {
