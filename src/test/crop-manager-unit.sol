@@ -76,8 +76,14 @@ contract Usr {
     function frob(address u, address v, address w, int256 dink, int256 dart) public {
         manager.frob(address(adapter), u, v, w, dink, dart);
     }
+    function frobDirect(address u, address v, address w, int256 dink, int256 dart) public {
+        VatLike(manager.vat()).frob(adapter.ilk(), u, v, w, dink, dart);
+    }
     function flux(address src, address dst, uint256 wad) public {
         manager.flux(address(adapter), src, dst, wad);
+    }
+    function fluxDirect(address src, address dst, uint256 wad) public {
+        VatLike(manager.vat()).flux(adapter.ilk(), src, dst, wad);
     }
     function quit() public {
         manager.quit(adapter.ilk(), address(this));
@@ -358,21 +364,50 @@ contract CropJoinManagerTest is TestBase {
     function testFail_quit() public {
         (Usr a,) = init_user();
         a.join(100 * 1e6);
-        a.quit();       // Attempt to unbox the gems (should fail when vat is live)
+        a.frob(100 * 1e18, 50 * 1e18);
+        a.quit();       // Attempt to unbox the urn (should fail when vat is live)
     }
 
     function test_quit() public {
         (Usr a,) = init_user();
         a.join(100 * 1e6);
+        a.frob(100 * 1e18, 50 * 1e18);
         vat.cage();
-        assertEq(vat.gem(ilk, a.proxy()), 100 * 1e18);
+        (uint256 ink, uint256 art) = vat.urns(ilk, a.proxy());
+        assertEq(ink, 100 * 1e18);
+        assertEq(art, 50 * 1e18);
         assertEq(adapter.stake(a.proxy()), 100 * 1e18);
+        (ink, art) = vat.urns(ilk, address(a));
+        assertEq(ink, 0);
+        assertEq(art, 0);
         assertEq(vat.gem(ilk, address(a)), 0);
         assertEq(adapter.stake(address(a)), 0);
         a.quit();
-        assertEq(vat.gem(ilk, a.proxy()), 0);
-        assertEq(adapter.stake(a.proxy()), 0);
+        (ink, art) = vat.urns(ilk, a.proxy());
+        assertEq(ink, 0);
+        assertEq(art, 0);
+        assertEq(adapter.stake(a.proxy()), 100 * 1e18);
+        (ink, art) = vat.urns(ilk, address(a));
+        assertEq(ink, 100 * 1e18);
+        assertEq(art, 50 * 1e18);
+        assertEq(vat.gem(ilk, address(a)), 0);
+        assertEq(adapter.stake(address(a)), 0);
+        
+        // Can now interact directly with the vat to exit
+
+        a.frobDirect(address(a), address(a), address(a), -100 * 1e18, -50 * 1e18);
         assertEq(vat.gem(ilk, address(a)), 100 * 1e18);
-        assertEq(adapter.stake(address(a)), 100 * 1e18);
+        (ink, art) = vat.urns(ilk, address(a));
+        assertEq(ink, 0);
+        assertEq(art, 0);
+
+        // Need to move the gems back to the proxy to exit through the crop join
+
+        a.fluxDirect(address(a), a.proxy(), 100 * 1e18);
+        assertEq(vat.gem(ilk, address(a)), 0);
+        assertEq(vat.gem(ilk, a.proxy()), 100 * 1e18);
+        a.exit(100 * 1e6);
+        assertEq(vat.gem(ilk, a.proxy()), 0);
+        assertEq(gem.balanceOf(address(a)), 200 * 1e6);
     }
 }

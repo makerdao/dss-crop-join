@@ -48,12 +48,20 @@ contract MockVat {
         gem[ilk][usr] = add(gem[ilk][usr], wad);
     }
     function frob(bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) external {
-        Urn memory urn = urns[ilk][u];
+        Urn storage urn = urns[ilk][u];
         urn.ink = add(urn.ink, dink);
         urn.art = add(urn.art, dart);
-        urns[ilk][u] = urn;
         gem[ilk][v] = sub(gem[ilk][v], dink);
         dai[w] = add(dai[w], dart * 10**27);
+    }
+    function fork(bytes32 ilk, address src, address dst, int dink, int dart) external {
+        Urn storage u = urns[ilk][src];
+        Urn storage v = urns[ilk][dst];
+
+        u.ink = sub(u.ink, dink);
+        u.art = sub(u.art, dart);
+        v.ink = add(v.ink, dink);
+        v.art = add(v.art, dart);
     }
     function flux(bytes32 ilk, address src, address dst, uint256 wad) external {
         gem[ilk][src] = sub(gem[ilk][src], wad);
