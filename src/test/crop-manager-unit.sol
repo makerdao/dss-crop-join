@@ -58,11 +58,29 @@ contract Usr {
     function gems() public view returns (uint256) {
         return adapter.vat().gem(adapter.ilk(), proxy());
     }
+    function urn() public view returns (uint256, uint256) {
+        return adapter.vat().urns(adapter.ilk(), proxy());
+    }
+    function dai() public view returns (uint256) {
+        return adapter.vat().dai(address(this));
+    }
     function reap() public {
         manager.join(address(adapter), address(this), 0);
     }
     function flee() public {
         manager.flee(address(adapter));
+    }
+    function frob(int256 dink, int256 dart) public {
+        manager.frob(address(adapter), address(this), address(this), address(this), dink, dart);
+    }
+    function frob(address u, address v, address w, int256 dink, int256 dart) public {
+        manager.frob(address(adapter), u, v, w, dink, dart);
+    }
+    function flux(address src, address dst, uint256 wad) public {
+        manager.flux(address(adapter), src, dst, wad);
+    }
+    function quit(address dst) public {
+        manager.quit(adapter.ilk(), dst);
     }
 
     function try_call(address addr, bytes calldata data) external returns (bool) {
@@ -134,9 +152,60 @@ contract CropJoinManagerTest is TestBase {
         bonus.mint(usr, wad);
     }
 
-    function test_reward() public virtual {
-        reward(self, 100 ether);
-        assertEq(bonus.balanceOf(self), 100 ether);
+    function test_make_proxy() public {
+        assertEq(manager.proxy(address(this)), address(0));
+        manager.join(address(adapter), address(this), 0);
+        assertTrue(manager.proxy(address(this)) != address(0));
+    }
+
+    function test_join_exit_self() public {
+        (Usr a,) = init_user();
+        a.join(10 * 1e6);
+        assertEq(gem.balanceOf(address(a)), 190 * 1e6);
+        assertEq(gem.balanceOf(address(adapter)), 10 * 1e6);
+        assertEq(bonus.balanceOf(address(a)), 0);
+        assertEq(a.gems(), 10 * 1e18);
+        assertEq(a.stake(), 10 * 1e18);
+        reward(address(adapter), 50 * 1e18);
+        a.exit(10 * 1e6);
+        assertEq(gem.balanceOf(address(a)), 200 * 1e6);
+        assertEq(gem.balanceOf(address(adapter)), 0);
+        assertEq(bonus.balanceOf(address(a)), 50 * 1e18);
+        assertEq(a.gems(), 0);
+        assertEq(a.stake(), 0);
+    }
+
+    function test_join_other() public {
+        (Usr a, Usr b) = init_user();
+        a.join(10 * 1e6);
+        assertEq(gem.balanceOf(address(a)), 190 * 1e6);
+        assertEq(gem.balanceOf(address(adapter)), 10 * 1e6);
+        assertEq(a.gems(), 10 * 1e18);
+        assertEq(a.stake(), 10 * 1e18);
+        reward(address(adapter), 50 * 1e18);
+        b.join(address(a), 20 * 1e6);
+        assertEq(gem.balanceOf(address(a)), 190 * 1e6);
+        assertEq(gem.balanceOf(address(adapter)), 30 * 1e6);
+        assertEq(a.gems(), 30 * 1e18);
+        assertEq(a.stake(), 30 * 1e18);
+        assertEq(bonus.balanceOf(address(a)), 50 * 1e18);
+    }
+
+    function test_frob() public {
+        (Usr a,) = init_user();
+        a.join(100 * 1e6);
+        a.frob(100 * 1e18, 50 * 1e18);
+        (uint256 ink, uint256 art) = a.urn();
+        assertEq(ink, 100 * 1e18);
+        assertEq(art, 50 * 1e18);
+        assertEq(a.dai(), 50 * 1e45);
+        assertEq(a.gems(), 0);
+        a.frob(-100 * 1e18, -50 * 1e18);
+        (ink, art) = a.urn();
+        assertEq(ink, 0);
+        assertEq(art, 0);
+        assertEq(a.dai(), 0);
+        assertEq(a.gems(), 100 * 1e18);
     }
 
     function test_simple_multi_user() public {
@@ -209,7 +278,7 @@ contract CropJoinManagerTest is TestBase {
         b.exit(20 * 1e6);
     }
 
-    function test_join_other() public {
+    function test_join_other2() public {
         (Usr a, Usr b) = init_user();
 
         assertEq(gem.balanceOf(address(a)), 200e6);

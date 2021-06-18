@@ -20,14 +20,22 @@ import "./base.sol";
 import "../crop.sol";
 
 contract MockVat {
-    mapping (bytes32 => mapping (address => uint)) public gem;
-    function urns(bytes32,address) external returns (uint256, uint256) {
-        return (0, 0);
+    struct Urn {
+        uint256 ink;   // Locked Collateral  [wad]
+        uint256 art;   // Normalised Debt    [wad]
     }
+    mapping (bytes32 => mapping (address => uint)) public gem;
+    mapping (bytes32 => mapping (address => Urn)) public urns;
+    mapping (address => uint) public dai;
     function add(uint x, int y) internal pure returns (uint z) {
         z = x + uint(y);
         require(y >= 0 || z <= x, "vat/add-fail");
         require(y <= 0 || z >= x, "vat/add-fail");
+    }
+    function sub(uint x, int y) internal pure returns (uint z) {
+        z = x - uint(y);
+        require(y <= 0 || z <= x, "vat/sub-fail");
+        require(y >= 0 || z >= x, "vat/sub-fail");
     }
     function add(uint x, uint y) internal pure returns (uint z) {
         require((z = x + y) >= x, "vat/add-fail");
@@ -37,6 +45,14 @@ contract MockVat {
     }
     function slip(bytes32 ilk, address usr, int256 wad) external {
         gem[ilk][usr] = add(gem[ilk][usr], wad);
+    }
+    function frob(bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) external {
+        Urn memory urn = urns[ilk][u];
+        urn.ink = add(urn.ink, dink);
+        urn.art = add(urn.art, dart);
+        urns[ilk][u] = urn;
+        gem[ilk][v] = sub(gem[ilk][v], dink);
+        dai[w] = add(dai[w], dart * 10**27);
     }
     function flux(bytes32 ilk, address src, address dst, uint256 wad) external {
         gem[ilk][src] = sub(gem[ilk][src], wad);
@@ -61,6 +77,10 @@ contract Token {
     }
     function transferFrom(address src, address dst, uint wad) public returns (bool) {
         require(balanceOf[src] >= wad, "transferFrom/insufficient");
+        if (src != msg.sender && allowance[src][msg.sender] != uint(-1)) {
+            require(allowance[src][msg.sender] >= wad, "transferFrom/insufficient-approval");
+            allowance[src][msg.sender] = allowance[src][msg.sender] - wad;
+        }
         balanceOf[src] -= wad;
         balanceOf[dst] += wad;
         return true;
@@ -69,6 +89,7 @@ contract Token {
         balanceOf[dst] += wad;
     }
     function approve(address usr, uint wad) public returns (bool) {
+        allowance[msg.sender][usr] = wad;
     }
     function mint(uint wad) public returns (uint) {
         mint(msg.sender, wad);
