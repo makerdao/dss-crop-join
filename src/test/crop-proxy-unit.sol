@@ -171,7 +171,6 @@ contract CropProxyUnitTest is TestBase {
         CropProxyLogic base = new CropProxyLogic();
         base.setImplementation(address(new CropProxyLogicImp(address(vat))));
         proxyLogic = CropProxyLogicImp(address(base));
-        proxyLogic.approve(address(adapter));
 
         adapter.rely(address(proxyLogic));
         adapter.deny(address(this));    // Only access should be through proxyLogic
