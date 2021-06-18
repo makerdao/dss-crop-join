@@ -92,7 +92,7 @@ contract Usr {
     }
 }
 
-contract CropProxyUnitTest is TestBase {
+contract CropJoinManagerTest is TestBase {
 
     Token               gem;
     Token               bonus;

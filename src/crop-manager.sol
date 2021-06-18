@@ -21,14 +21,17 @@ interface VatLike {
     function urns(bytes32, address) external returns (uint256, uint256);
     function fork(bytes32, address, address, int256, int256) external;
     function frob(bytes32, address, address, address, int256, int256) external;
+    function flux(bytes32, address, address, uint256) external;
     function hope(address) external;
     function nope(address) external;
 }
 
 interface CropLike {
     function gem() external view returns (address);
+    function ilk() external view returns (bytes32);
     function join(address, address, uint256) external;
     function exit(address, address, uint256) external;
+    function tack(address, address, uint256) external;
     function flee(address) external;
 }
 
@@ -127,9 +130,20 @@ contract CropJoinManagerImp {
         CropLike(crop).flee(getProxy(msg.sender));
     }
 
-    function frob(bytes32 ilk, int256 dink, int256 dart) external {
-        address urp = getProxy(msg.sender);
-        VatLike(vat).frob(ilk, urp, urp, msg.sender, dink, dart);
+    function frob(address crop, address u, address v, address w, int256 dink, int256 dart) external {
+       require(u == msg.sender && v == msg.sender && w == msg.sender, "CropJoinManager/not-allowed");
+
+        VatLike(vat).frob(CropLike(crop).ilk(), getProxy(u), getProxy(v), w, dink, dart);
+    }
+
+    function flux(address crop, address src, address dst, uint256 wad) external {
+        require(src == msg.sender, "CropJoinManager/not-allowed");
+
+        address srcp = getProxy(src);
+        address dstp = getProxy(dst);
+
+        VatLike(vat).flux(CropLike(crop).ilk(), srcp, dstp, wad);
+        CropLike(crop).tack(srcp, dstp, wad);
     }
 
     function quit(bytes32 ilk, address dst) external {
