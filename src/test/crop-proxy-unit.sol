@@ -19,67 +19,7 @@ pragma solidity 0.6.12;
 import "./base.sol";
 import {CropJoin} from "../crop.sol";
 import "../crop-proxy.sol";
-
-contract MockVat {
-    mapping (bytes32 => mapping (address => uint)) public gem;
-    function urns(bytes32,address) external returns (uint256, uint256) {
-        return (0, 0);
-    }
-    function add(uint x, int y) internal pure returns (uint z) {
-        z = x + uint(y);
-        require(y >= 0 || z <= x, "vat/add-fail");
-        require(y <= 0 || z >= x, "vat/add-fail");
-    }
-    function add(uint x, uint y) internal pure returns (uint z) {
-        require((z = x + y) >= x, "vat/add-fail");
-    }
-    function sub(uint x, uint y) internal pure returns (uint z) {
-        require((z = x - y) <= x, "vat/sub-fail");
-    }
-    function slip(bytes32 ilk, address usr, int256 wad) external {
-        gem[ilk][usr] = add(gem[ilk][usr], wad);
-    }
-    function flux(bytes32 ilk, address src, address dst, uint256 wad) external {
-        gem[ilk][src] = sub(gem[ilk][src], wad);
-        gem[ilk][dst] = add(gem[ilk][dst], wad);
-    }
-    function hope(address usr) external {}
-}
-
-contract Token {
-    uint8 public decimals;
-    mapping (address => uint) public balanceOf;
-    mapping (address => mapping (address => uint)) public allowance;
-    constructor(uint8 dec, uint wad) public {
-        decimals = dec;
-        balanceOf[msg.sender] = wad;
-    }
-    function transfer(address usr, uint wad) public returns (bool) {
-        require(balanceOf[msg.sender] >= wad, "transfer/insufficient");
-        balanceOf[msg.sender] -= wad;
-        balanceOf[usr] += wad;
-        return true;
-    }
-    function transferFrom(address src, address dst, uint wad) public returns (bool) {
-        require(balanceOf[src] >= wad, "transferFrom/insufficient");
-        if (src != msg.sender && allowance[src][msg.sender] != uint(-1)) {
-            require(allowance[src][msg.sender] >= wad, "transferFrom/insufficient-approval");
-            allowance[src][msg.sender] = allowance[src][msg.sender] - wad;
-        }
-        balanceOf[src] -= wad;
-        balanceOf[dst] += wad;
-        return true;
-    }
-    function mint(address dst, uint wad) public returns (uint) {
-        balanceOf[dst] += wad;
-    }
-    function approve(address usr, uint wad) public returns (bool) {
-        allowance[msg.sender][usr] = wad;
-    }
-    function mint(uint wad) public returns (uint) {
-        mint(msg.sender, wad);
-    }
-}
+import {MockVat, Token} from "./crop-unit.t.sol";
 
 contract Usr {
 
