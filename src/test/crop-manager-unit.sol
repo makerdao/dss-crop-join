@@ -175,7 +175,7 @@ contract CropJoinManagerTest is TestBase {
         assertEq(a.stake(), 0);
     }
 
-    function test_join_other() public {
+    function test_join_other1() public {
         (Usr a, Usr b) = init_user();
         a.join(10 * 1e6);
         assertEq(gem.balanceOf(address(a)), 190 * 1e6);
@@ -189,6 +189,40 @@ contract CropJoinManagerTest is TestBase {
         assertEq(a.gems(), 30 * 1e18);
         assertEq(a.stake(), 30 * 1e18);
         assertEq(bonus.balanceOf(address(a)), 50 * 1e18);
+    }
+
+    function test_join_other2() public {
+        (Usr a, Usr b) = init_user();
+
+        assertEq(gem.balanceOf(address(a)), 200e6);
+        assertEq(gem.balanceOf(address(b)), 200e6);
+
+        // User A sends some gems + rewards to User B
+        a.join(address(b), 100e6);
+        reward(address(adapter), 50e18);
+        assertEq(a.stake(), 0);
+        assertEq(a.crops(), 0);
+        assertEq(a.gems(), 0);
+        assertEq(b.stake(), 100e18);
+        assertEq(b.crops(), 0);
+        assertEq(b.gems(), 100e18);
+
+        // B can take all the rewards
+        b.reap();
+        assertEq(a.crops(), 0);
+        assertEq(b.crops(), 50e18);
+        assertEq(bonus.balanceOf(address(a)), 0);
+        assertEq(bonus.balanceOf(address(b)), 50e18);
+        
+        // B withdraws to A (rewards also go to A)
+        reward(address(adapter), 50e18);
+        b.exit(address(a), 100e6);
+        assertEq(gem.balanceOf(address(a)), 200e6);
+        assertEq(gem.balanceOf(address(b)), 200e6);
+        assertEq(a.crops(), 0);
+        assertEq(b.crops(), 0);
+        assertEq(bonus.balanceOf(address(a)), 50e18);
+        assertEq(bonus.balanceOf(address(b)), 50e18);
     }
 
     function test_frob() public {
@@ -206,6 +240,44 @@ contract CropJoinManagerTest is TestBase {
         assertEq(art, 0);
         assertEq(a.dai(), 0);
         assertEq(a.gems(), 100 * 1e18);
+    }
+
+    // Non-msg.sender frobs should be disallowed for now
+    function testFail_frob1() public {
+        (Usr a,) = init_user();
+        a.join(100 * 1e6);
+        a.frob(address(this), address(a), address(a), 100 * 1e18, 50 * 1e18);
+    }
+    function testFail_frob2() public {
+        (Usr a,) = init_user();
+        a.join(100 * 1e6);
+        a.frob(address(a), address(this), address(a), 100 * 1e18, 50 * 1e18);
+    }
+    function testFail_frob3() public {
+        (Usr a,) = init_user();
+        a.join(100 * 1e6);
+        a.frob(address(a), address(a), address(this), 100 * 1e18, 50 * 1e18);
+    }
+
+    function test_flux() public {
+        (Usr a, Usr b) = init_user();
+        a.join(100 * 1e6);
+        assertEq(a.gems(), 100 * 1e18);
+        assertEq(a.stake(), 100 * 1e18);
+        a.flux(address(a), address(b), 100 * 1e18);
+        assertEq(b.gems(), 100 * 1e18);
+        assertEq(b.stake(), 100 * 1e18);
+        b.exit(100 * 1e6);
+        assertEq(b.gems(), 0);
+        assertEq(b.stake(), 0);
+        assertEq(gem.balanceOf(address(b)), 300 * 1e6);
+    }
+
+    // Non-msg.sender srcs for flux should be disallowed for now
+    function testFail_flux() public {
+        (Usr a, Usr b) = init_user();
+        b.join(100 * 1e6);
+        a.flux(address(b), address(a), 100 * 1e18);
     }
 
     function test_simple_multi_user() public {
@@ -276,39 +348,5 @@ contract CropJoinManagerTest is TestBase {
         assertEq(bonus.balanceOf(address(b)), 50 * 1e18);
 
         b.exit(20 * 1e6);
-    }
-
-    function test_join_other2() public {
-        (Usr a, Usr b) = init_user();
-
-        assertEq(gem.balanceOf(address(a)), 200e6);
-        assertEq(gem.balanceOf(address(b)), 200e6);
-
-        // User A sends some gems + rewards to User B
-        a.join(address(b), 100e6);
-        reward(address(adapter), 50e18);
-        assertEq(a.stake(), 0);
-        assertEq(a.crops(), 0);
-        assertEq(a.gems(), 0);
-        assertEq(b.stake(), 100e18);
-        assertEq(b.crops(), 0);
-        assertEq(b.gems(), 100e18);
-
-        // B can take all the rewards
-        b.reap();
-        assertEq(a.crops(), 0);
-        assertEq(b.crops(), 50e18);
-        assertEq(bonus.balanceOf(address(a)), 0);
-        assertEq(bonus.balanceOf(address(b)), 50e18);
-        
-        // B withdraws to A (rewards also go to A)
-        reward(address(adapter), 50e18);
-        b.exit(address(a), 100e6);
-        assertEq(gem.balanceOf(address(a)), 200e6);
-        assertEq(gem.balanceOf(address(b)), 200e6);
-        assertEq(a.crops(), 0);
-        assertEq(b.crops(), 0);
-        assertEq(bonus.balanceOf(address(a)), 50e18);
-        assertEq(bonus.balanceOf(address(b)), 50e18);
     }
 }
