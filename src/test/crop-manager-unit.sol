@@ -19,7 +19,7 @@ pragma solidity 0.6.12;
 import "./base.sol";
 import {CropJoin} from "../crop.sol";
 import "../crop-manager.sol";
-import {MockVat, Token} from "./crop-unit.t.sol";
+import {MockVat} from "./crop-unit.t.sol";
 
 contract Usr {
 

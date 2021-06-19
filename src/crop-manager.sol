@@ -43,11 +43,13 @@ interface TokenLike {
 
 contract UrnProxy {
     address immutable public vat;
+    address immutable public usr;
     address public owner;
 
-    constructor(address vat_) public {
+    constructor(address vat_, address usr_) public {
         owner = msg.sender;
         vat = vat_;
+        usr = usr_;
         VatLike(vat_).hope(msg.sender);
     }
 
@@ -113,8 +115,12 @@ contract CropJoinManagerImp {
     function getProxy(address usr) internal returns (address urp) {
         urp = proxy[usr];
         if (urp == address(0)) {
-            urp = proxy[usr] = address(new UrnProxy(address(vat)));
+            urp = proxy[usr] = address(new UrnProxy(address(vat), usr));
         }
+    }
+
+    function createProxy() external returns (address) {
+        return getProxy(msg.sender);
     }
 
     function join(address crop, address urn, uint256 val) external {
