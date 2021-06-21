@@ -146,11 +146,11 @@ contract CropJoinManagerImp {
     function flux(address crop, address src, address dst, uint256 wad) external {
         require(src == msg.sender, "CropJoinManager/not-allowed");
 
-        address srcp = getProxy(src);
-        address dstp = getProxy(dst);
+        address surp = getProxy(src);
+        address durp = getProxy(dst);
 
-        VatLike(vat).flux(CropLike(crop).ilk(), srcp, dstp, wad);
-        CropLike(crop).tack(srcp, dstp, wad);
+        VatLike(vat).flux(CropLike(crop).ilk(), surp, durp, wad);
+        CropLike(crop).tack(surp, durp, wad);
     }
 
     function quit(bytes32 ilk, address dst) external {
