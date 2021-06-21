@@ -79,7 +79,6 @@ contract CropJoinManager {
     function deny(address usr) public auth { wards[usr] = 0; emit Deny(msg.sender); }
     modifier auth { require(wards[msg.sender] == 1, "CropJoinManager/non-authed"); _; }
 
-
     function setImplementation(address implementation_) external auth {
         implementation = implementation_;
         emit SetImplementation(implementation_);
