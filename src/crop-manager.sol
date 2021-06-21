@@ -42,22 +42,11 @@ interface TokenLike {
 }
 
 contract UrnProxy {
-    address immutable public vat;
     address immutable public usr;
-    address public owner;
 
     constructor(address vat_, address usr_) public {
-        owner = msg.sender;
-        vat = vat_;
         usr = usr_;
         VatLike(vat_).hope(msg.sender);
-    }
-
-    function migrate(address newOwner) external {
-        require(msg.sender == owner, "UrnProxy/not-owner");
-        VatLike(vat).hope(newOwner);
-        VatLike(vat).nope(owner);
-        owner = newOwner;
     }
 }
 
