@@ -205,9 +205,11 @@ contract CropperIntegrationTest is TestBase {
         address urp = manager.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
-        uint256 initialBonusBal = bonus.balanceOf(address(this));
 
         uint256 id = dog.bark(ILK, usr.proxy(), address(this));
+
+        // User gets the outstanding rewards on liquidation
+        assertEq(bonus.balanceOf(address(usr)), 10**4 * WAD);
 
         // Quarter of a DAI per gem--this means the total value of collateral is 250 DAI,
         // which is less than the tab. Thus we'll purchase 100% of the collateral.
@@ -235,16 +237,17 @@ contract CropperIntegrationTest is TestBase {
         manager.exit(address(join), address(this), 10**3 * WAD);
         assertEq(join.stake(urp), initialStake);
         assertEq(gem.balanceOf(address(this)), add(initialGemBal, 10**3 * WAD));
-        assertEq(bonus.balanceOf(address(this)), add(initialBonusBal, 10**4 * WAD));
     }
 
     function test_take_return_collateral() public {
         address urp = manager.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
-        uint256 initialBonusBal = bonus.balanceOf(address(this));
 
         uint256 id = dog.bark(ILK, usr.proxy(), address(this));
+
+        // User gets the outstanding rewards on liquidation
+        assertEq(bonus.balanceOf(address(usr)), 10**4 * WAD);
 
         // One DAI per gem; will be able to fully cover tab, leaving leftover collateral.
         uint256 price = RAY;
@@ -277,20 +280,17 @@ contract CropperIntegrationTest is TestBase {
         manager.exit(address(join), address(this), expectedPurchaseSize);
         assertEq(join.stake(urp), initialStake);
         assertEq(gem.balanceOf(address(this)), add(initialGemBal, expectedPurchaseSize));
-        assertEq(bonus.balanceOf(address(this)), add(initialBonusBal, mul(10**4 * WAD, expectedPurchaseSize) / (10**3 * WAD)));
 
         // Liquidated urn can exit and get its fair share of rewards as well.
         usr.exit(address(usr), collateralReturned);
         assertEq(usr.stake(), 0);
         assertEq(gem.balanceOf(address(usr)), collateralReturned);
-        assertEq(bonus.balanceOf(address(usr)), mul(10**4 * WAD, collateralReturned) / (10**3 * WAD));
     }
 
     function test_yank() public {
         address urp = manager.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
-        uint256 initialBonusBal = bonus.balanceOf(address(this));
 
         uint256 id = dog.bark(ILK, usr.proxy(), address(this));
 
@@ -307,6 +307,5 @@ contract CropperIntegrationTest is TestBase {
         manager.exit(address(join), address(this), 10**3 * WAD);
         assertEq(join.stake(urp), initialStake);
         assertEq(gem.balanceOf(address(this)), add(initialGemBal, 10**3 * WAD));
-        assertEq(bonus.balanceOf(address(this)), add(initialBonusBal, 10**4 * WAD));
     }
 }

@@ -53,7 +53,7 @@ interface CropJoinLike {
 
 interface CropJoinManagerLike {
     function proxy(address) external returns (address);
-    function exit(address, address, uint256) external;
+    function join(address, address, uint256) external;
 }
 
 interface ProxyLike {
@@ -279,7 +279,7 @@ contract CropClipper {
         }
 
         // Give any outstanding rewards to vault owner and move the stake over to this contract
-        cropMgr.exit(address(crop), ProxyLike(usr).usr(), 0);
+        cropMgr.join(address(crop), ProxyLike(usr).usr(), 0);
         crop.tack(usr, address(this), lot);
 
         emit Kick(id, top, tab, lot, usr, kpr, coin);
