@@ -47,7 +47,7 @@ contract Usr {
         manager.exit(address(adapter), address(this), wad);
     }
     function proxy() public view returns (address) {
-        return manager.proxy(address(this));
+        return CropJoinManager(address(manager)).proxy(address(this));
     }
     function crops() public view returns (uint256) {
         return adapter.crops(proxy());
@@ -71,16 +71,16 @@ contract Usr {
         manager.flee(address(adapter));
     }
     function frob(int256 dink, int256 dart) public {
-        manager.frob(address(adapter), address(this), address(this), address(this), dink, dart);
+        manager.frob(address(adapter), adapter.ilk(), address(this), address(this), address(this), dink, dart);
     }
     function frob(address u, address v, address w, int256 dink, int256 dart) public {
-        manager.frob(address(adapter), u, v, w, dink, dart);
+        manager.frob(address(adapter), adapter.ilk(), u, v, w, dink, dart);
     }
     function frobDirect(address u, address v, address w, int256 dink, int256 dart) public {
         VatLike(manager.vat()).frob(adapter.ilk(), u, v, w, dink, dart);
     }
     function flux(address src, address dst, uint256 wad) public {
-        manager.flux(address(adapter), src, dst, wad);
+        manager.flux(address(adapter), adapter.ilk(), src, dst, wad);
     }
     function fluxDirect(address src, address dst, uint256 wad) public {
         VatLike(manager.vat()).flux(adapter.ilk(), src, dst, wad);
@@ -162,9 +162,9 @@ contract CropJoinManagerTest is TestBase {
     }
 
     function test_make_proxy() public {
-        assertEq(manager.proxy(address(this)), address(0));
+        assertEq(CropJoinManager(address(manager)).proxy(address(this)), address(0));
         manager.join(address(adapter), address(this), 0);
-        assertTrue(manager.proxy(address(this)) != address(0));
+        assertTrue(CropJoinManager(address(manager)).proxy(address(this)) != address(0));
     }
 
     function test_join_exit_self() public {
