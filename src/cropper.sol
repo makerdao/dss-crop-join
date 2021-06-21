@@ -53,6 +53,11 @@ interface CropJoinLike {
 
 interface CropJoinManagerLike {
     function proxy(address) external returns (address);
+    function exit(address, address, uint256) external;
+}
+
+interface ProxyLike {
+    function usr() external view returns (address);
 }
 
 contract CropClipper {
@@ -273,7 +278,8 @@ contract CropClipper {
             vat.suck(vow, kpr, coin);
         }
 
-        // TODO: harvest rewards for user once a reverse UrnProxy mapping is implemented.
+        // Give any outstanding rewards to vault owner and move the stake over to this contract
+        cropMgr.exit(address(crop), ProxyLike(usr).usr(), 0);
         crop.tack(usr, address(this), lot);
 
         emit Kick(id, top, tab, lot, usr, kpr, coin);
