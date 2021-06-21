@@ -140,7 +140,9 @@ contract CropJoinManagerImp {
     function frob(address crop, address u, address v, address w, int256 dink, int256 dart) external {
        require(u == msg.sender && v == msg.sender && w == msg.sender, "CropJoinManager/not-allowed");
 
-        VatLike(vat).frob(CropLike(crop).ilk(), getProxy(u), getProxy(v), w, dink, dart);
+        // Note: This simplification only works because of the u == v == msg.sender restriction above
+        address urp = getProxy(u);
+        VatLike(vat).frob(CropLike(crop).ilk(), urp, urp, w, dink, dart);
     }
 
     function flux(address crop, address src, address dst, uint256 wad) external {
