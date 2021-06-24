@@ -259,11 +259,11 @@ contract CropManagerTest is TestBase {
 
         reward(address(adapter), 50 * 1e18);
 
-        a.join(0);
+        a.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
         assertEq(bonus.balanceOf(address(b)),  0 * 1e18);
 
-        b.join(0);
+        b.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
     }
@@ -276,15 +276,15 @@ contract CropManagerTest is TestBase {
 
         reward(address(adapter), 50 * 1e18);
 
-        a.join(0);
+        a.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
         assertEq(bonus.balanceOf(address(b)),  0 * 1e18);
 
-        b.join(0);
+        b.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
 
-        a.join(0); b.reap();
+        a.reap(); b.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
     }
@@ -297,26 +297,26 @@ contract CropManagerTest is TestBase {
 
         reward(address(adapter), 50 * 1e18);
 
-        a.join(0);
+        a.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
         assertEq(bonus.balanceOf(address(b)),  0 * 1e18);
 
-        b.join(0);
+        b.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
 
-        a.join(0); b.reap();
+        a.reap(); b.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
 
         reward(address(adapter), 50 * 1e18);
         a.join(20 * 1e6);
-        a.join(0); b.reap();
+        a.reap(); b.reap();
         assertEq(bonus.balanceOf(address(a)), 60 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 40 * 1e18);
 
         reward(address(adapter), 30 * 1e18);
-        a.join(0); b.reap();
+        a.reap(); b.reap();
         assertEq(bonus.balanceOf(address(a)), 80 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 50 * 1e18);
 
