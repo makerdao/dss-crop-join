@@ -16,8 +16,8 @@
 
 pragma solidity 0.6.12;
 
-import "./base.sol";
-import "../crop.sol";
+import "./TestBase.sol";
+import "../CropJoin.sol";
 
 contract MockVat {
     struct Urn {
@@ -102,8 +102,8 @@ contract Usr {
     function reap() public {
         adapter.join(address(this), address(this), 0);
     }
-    function flee(address urn) public {
-        adapter.flee(urn, urn);
+    function flee(address urn, address usr) public {
+        adapter.flee(urn, usr);
     }
     function tack(address src, address dst, uint256 wad) public {
         adapter.tack(src, dst, wad);
@@ -315,7 +315,7 @@ contract CropUnitTest is TestBase {
         assertEq(gem.balanceOf(address(b)), 200e6,  "b balance before exit");
         assertEq(adapter.stake(address(b)),       0e18, "b join balance before");
         adapter.tack(address(a), address(b),     50e18);
-        b.flee(address(b));
+        b.flee(address(b), address(b));
         assertEq(gem.balanceOf(address(b)), 250e6,  "b balance after exit");
         assertEq(adapter.stake(address(b)),       0e18, "b join balance after");
     }

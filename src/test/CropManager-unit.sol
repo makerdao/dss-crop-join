@@ -16,17 +16,17 @@
 
 pragma solidity 0.6.12;
 
-import "./base.sol";
-import {CropJoin} from "../crop.sol";
-import "../crop-manager.sol";
-import {MockVat} from "./crop-unit.t.sol";
+import "./TestBase.sol";
+import {CropJoin} from "../CropJoin.sol";
+import "../CropManager.sol";
+import {MockVat} from "./CropJoin-unit.t.sol";
 
 contract Usr {
 
     CropJoin adapter;
-    CropJoinManagerImp manager;
+    CropManagerImp manager;
 
-    constructor(CropJoin adapter_, CropJoinManagerImp manager_) public {
+    constructor(CropJoin adapter_, CropManagerImp manager_) public {
         adapter = adapter_;
         manager = manager_;
     }
@@ -47,7 +47,7 @@ contract Usr {
         manager.exit(address(adapter), address(this), wad);
     }
     function proxy() public view returns (address) {
-        return CropJoinManager(address(manager)).proxy(address(this));
+        return CropManager(address(manager)).proxy(address(this));
     }
     function crops() public view returns (uint256) {
         return adapter.crops(proxy());
@@ -119,7 +119,7 @@ contract Usr {
     }
 }
 
-contract CropJoinManagerTest is TestBase {
+contract CropManagerTest is TestBase {
 
     Token               gem;
     Token               bonus;
@@ -127,7 +127,7 @@ contract CropJoinManagerTest is TestBase {
     address             self;
     bytes32             ilk = "TOKEN-A";
     CropJoin            adapter;
-    CropJoinManagerImp  manager;
+    CropManagerImp      manager;
 
     function setUp() public virtual {
         self = address(this);
@@ -135,9 +135,9 @@ contract CropJoinManagerTest is TestBase {
         bonus = new Token(18, 0);
         vat = new MockVat();
         adapter = new CropJoin(address(vat), ilk, address(gem), address(bonus));
-        CropJoinManager base = new CropJoinManager();
-        base.setImplementation(address(new CropJoinManagerImp(address(vat))));
-        manager = CropJoinManagerImp(address(base));
+        CropManager base = new CropManager();
+        base.setImplementation(address(new CropManagerImp(address(vat))));
+        manager = CropManagerImp(address(base));
 
         adapter.rely(address(manager));
         adapter.deny(address(this));    // Only access should be through manager
@@ -162,9 +162,9 @@ contract CropJoinManagerTest is TestBase {
     }
 
     function test_make_proxy() public {
-        assertEq(CropJoinManager(address(manager)).proxy(address(this)), address(0));
+        assertEq(CropManager(address(manager)).proxy(address(this)), address(0));
         manager.join(address(adapter), address(this), 0);
-        assertTrue(CropJoinManager(address(manager)).proxy(address(this)) != address(0));
+        assertTrue(CropManager(address(manager)).proxy(address(this)) != address(0));
     }
 
     function test_join_exit_self() public {
