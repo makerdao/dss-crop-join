@@ -340,7 +340,7 @@ contract CropJoinManagerTest is TestBase {
         a.frob(address(a), address(a), address(this), 100 * 1e18, 50 * 1e18);
     }
 
-    function test_flux() public {
+    function test_flux_other() public {
         (Usr a, Usr b) = init_user();
         a.join(100 * 1e6);
         assertEq(a.gems(), 100 * 1e18);
@@ -352,6 +352,23 @@ contract CropJoinManagerTest is TestBase {
         assertEq(b.gems(), 0);
         assertEq(b.stake(), 0);
         assertEq(gem.balanceOf(address(b)), 300 * 1e6);
+    }
+
+    function test_flux_yourself() public {
+        // Flux to yourself should be a no-op
+        (Usr a,) = init_user();
+        a.join(100 * 1e6);
+        uint256 crops = a.crops();
+        assertEq(a.gems(), 100 * 1e18);
+        assertEq(a.stake(), 100 * 1e18);
+        a.flux(address(a), address(a), 100 * 1e18);
+        assertEq(a.gems(), 100 * 1e18);
+        assertEq(a.stake(), 100 * 1e18);
+        assertEq(a.crops(), crops);
+        a.exit(100 * 1e6);
+        assertEq(a.gems(), 0);
+        assertEq(a.stake(), 0);
+        assertEq(gem.balanceOf(address(a)), 200 * 1e6);
     }
 
     // Non-msg.sender srcs for flux should be disallowed for now
@@ -409,5 +426,16 @@ contract CropJoinManagerTest is TestBase {
         a.exit(100 * 1e6);
         assertEq(vat.gem(ilk, a.proxy()), 0);
         assertEq(gem.balanceOf(address(a)), 200 * 1e6);
+    }
+
+    // Make sure we can't call most functions on the cropper directly
+    function testFail_crop_join() public {
+        adapter.join(address(this), address(this), 0);
+    }
+    function testFail_crop_exit() public {
+        adapter.exit(address(this), address(this), 0);
+    }
+    function testFail_crop_flee() public {
+        adapter.flee(address(this));
     }
 }
