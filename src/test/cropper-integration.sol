@@ -92,7 +92,7 @@ contract Pip {
     function set(uint256 val_) external {
         val = val_;
     }
-    function peek() external returns (bytes32, bool) {
+    function peek() external view returns (bytes32, bool) {
         return (bytes32(val), true);
     }
 }
