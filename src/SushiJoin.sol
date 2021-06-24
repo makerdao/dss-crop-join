@@ -16,7 +16,7 @@
 
 pragma solidity 0.6.12;
 
-import "./crop.sol";
+import "./CropJoin.sol";
 
 interface MasterChefLike {
     function pendingSushi(uint256 _pid, address _user) external view returns (uint256);

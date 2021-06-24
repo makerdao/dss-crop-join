@@ -15,11 +15,11 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 pragma solidity 0.6.12;
 
-import "./base.sol";
-import {CropJoin} from "../crop.sol";
-import {CropManager,CropManagerImp} from "../cropManager.sol";
-import {CropClipper} from "../cropClipper.sol";
-import {Usr} from './cropManager-unit.sol';
+import "./TestBase.sol";
+import {CropJoin} from "../CropJoin.sol";
+import {CropManager,CropManagerImp} from "../CropManager.sol";
+import {CropClipper} from "../CropClipper.sol";
+import {Usr} from './CropManager-unit.sol';
 
 interface VatLike {
     function wards(address) external view returns (uint256);

@@ -16,10 +16,10 @@
 
 pragma solidity 0.6.12;
 
-import "./base.sol";
-import {CropJoin} from "../crop.sol";
-import "../cropManager.sol";
-import {MockVat} from "./crop-unit.t.sol";
+import "./TestBase.sol";
+import {CropJoin} from "../CropJoin.sol";
+import "../CropManager.sol";
+import {MockVat} from "./CropJoin-unit.t.sol";
 
 contract Usr {
 

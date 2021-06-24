@@ -16,8 +16,8 @@
 
 pragma solidity 0.6.12;
 
-import "./base.sol";
-import {ERC20, MasterChefLike, SushiJoin, TimelockLike} from "../sushi.sol";
+import "./TestBase.sol";
+import {ERC20, MasterChefLike, SushiJoin, TimelockLike} from "../SushiJoin.sol";
 
 interface VatLike {
     function wards(address) external view returns (uint256);

@@ -16,8 +16,8 @@
 
 pragma solidity 0.6.12;
 
-import "./base.sol";
-import "../crop.sol";
+import "./TestBase.sol";
+import "../CropJoin.sol";
 
 contract MockVat {
     struct Urn {
