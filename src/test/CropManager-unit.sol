@@ -32,18 +32,18 @@ contract Usr {
     }
 
     function approve(address coin, address usr) public {
-        Token(coin).approve(usr, uint(-1));
+        Token(coin).approve(usr, uint256(-1));
     }
-    function join(address usr, uint wad) public {
+    function join(address usr, uint256 wad) public {
         manager.join(address(adapter), usr, wad);
     }
-    function join(uint wad) public {
+    function join(uint256 wad) public {
         manager.join(address(adapter), address(this), wad);
     }
-    function exit(address usr, uint wad) public {
+    function exit(address usr, uint256 wad) public {
         manager.exit(address(adapter), usr, wad);
     }
-    function exit(uint wad) public {
+    function exit(uint256 wad) public {
         manager.exit(address(adapter), address(this), wad);
     }
     function proxy() public view returns (address) {
@@ -112,7 +112,7 @@ contract Usr {
         ok = abi.decode(success, (bool));
         if (ok) return true;
     }
-    function can_exit(address usr, uint val) public returns (bool) {
+    function can_exit(address usr, uint256 val) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
             ("exit(address,address,uint256)", address(adapter), usr, val);
         return can_call(address(manager), call);
@@ -146,7 +146,7 @@ contract CropManagerTest is TestBase {
     function init_user() internal returns (Usr a, Usr b) {
         return init_user(200 * 1e6);
     }
-    function init_user(uint cash) internal returns (Usr a, Usr b) {
+    function init_user(uint256 cash) internal returns (Usr a, Usr b) {
         a = new Usr(adapter, manager);
         b = new Usr(adapter, manager);
 
@@ -157,7 +157,7 @@ contract CropManagerTest is TestBase {
         b.approve(address(gem), address(manager));
     }
 
-    function reward(address usr, uint wad) internal virtual {
+    function reward(address usr, uint256 wad) internal virtual {
         bonus.mint(usr, wad);
     }
 

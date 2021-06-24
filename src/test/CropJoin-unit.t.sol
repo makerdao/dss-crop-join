@@ -24,24 +24,24 @@ contract MockVat {
         uint256 ink;   // Locked Collateral  [wad]
         uint256 art;   // Normalised Debt    [wad]
     }
-    mapping (bytes32 => mapping (address => uint)) public gem;
+    mapping (bytes32 => mapping (address => uint256)) public gem;
     mapping (bytes32 => mapping (address => Urn)) public urns;
-    mapping (address => uint) public dai;
+    mapping (address => uint256) public dai;
     uint256 public live = 1;
-    function add(uint x, int y) internal pure returns (uint z) {
-        z = x + uint(y);
+    function add(uint256 x, int256 y) internal pure returns (uint256 z) {
+        z = x + uint256(y);
         require(y >= 0 || z <= x, "vat/add-fail");
         require(y <= 0 || z >= x, "vat/add-fail");
     }
-    function sub(uint x, int y) internal pure returns (uint z) {
-        z = x - uint(y);
+    function sub(uint256 x, int256 y) internal pure returns (uint256 z) {
+        z = x - uint256(y);
         require(y <= 0 || z <= x, "vat/sub-fail");
         require(y >= 0 || z >= x, "vat/sub-fail");
     }
-    function add(uint x, uint y) internal pure returns (uint z) {
+    function add(uint256 x, uint256 y) internal pure returns (uint256 z) {
         require((z = x + y) >= x, "vat/add-fail");
     }
-    function sub(uint x, uint y) internal pure returns (uint z) {
+    function sub(uint256 x, uint256 y) internal pure returns (uint256 z) {
         require((z = x - y) <= x, "vat/sub-fail");
     }
     function slip(bytes32 ilk, address usr, int256 wad) external {
@@ -54,7 +54,7 @@ contract MockVat {
         gem[ilk][v] = sub(gem[ilk][v], dink);
         dai[w] = add(dai[w], dart * 10**27);
     }
-    function fork(bytes32 ilk, address src, address dst, int dink, int dart) external {
+    function fork(bytes32 ilk, address src, address dst, int256 dink, int256 dart) external {
         Urn storage u = urns[ilk][src];
         Urn storage v = urns[ilk][dst];
 
@@ -82,15 +82,15 @@ contract Usr {
     }
 
     function approve(address coin, address usr) public {
-        Token(coin).approve(usr, uint(-1));
+        Token(coin).approve(usr, uint256(-1));
     }
-    function join(address usr, uint wad) public {
+    function join(address usr, uint256 wad) public {
         adapter.join(usr, usr, wad);
     }
-    function join(uint wad) public {
+    function join(uint256 wad) public {
         adapter.join(address(this), address(this), wad);
     }
-    function exit(address urn, address usr, uint wad) public {
+    function exit(address urn, address usr, uint256 wad) public {
         adapter.exit(urn, usr, wad);
     }
     function crops() public view returns (uint256) {
@@ -132,7 +132,7 @@ contract Usr {
         ok = abi.decode(success, (bool));
         if (ok) return true;
     }
-    function can_exit(address urn, address usr, uint val) public returns (bool) {
+    function can_exit(address urn, address usr, uint256 val) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
             ("exit(address,address,uint256)", urn, usr, val);
         return can_call(address(adapter), call);
@@ -159,7 +159,7 @@ contract CropUnitTest is TestBase {
     function init_user() internal returns (Usr a, Usr b) {
         return init_user(200 * 1e6);
     }
-    function init_user(uint cash) internal returns (Usr a, Usr b) {
+    function init_user(uint256 cash) internal returns (Usr a, Usr b) {
         a = new Usr(adapter);
         b = new Usr(adapter);
         adapter.rely(address(a));
@@ -174,7 +174,7 @@ contract CropUnitTest is TestBase {
         a.hope(address(vat), address(this));
     }
 
-    function reward(address usr, uint wad) internal virtual {
+    function reward(address usr, uint256 wad) internal virtual {
         bonus.mint(usr, wad);
     }
 
@@ -220,7 +220,7 @@ contract CropUnitTest is TestBase {
         assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
     }
     function test_simple_join_exit() public {
-        gem.approve(address(adapter), uint(-1));
+        gem.approve(address(adapter), uint256(-1));
 
         adapter.join(address(this), address(this), 100 * 1e6);
         assertEq(bonus.balanceOf(self), 0 * 1e18, "no initial rewards");
@@ -363,7 +363,7 @@ contract CropUnitTest is TestBase {
     // flee is an emergency exit with no rewards, check that these are
     // not given out
     function test_flee() public {
-        gem.approve(address(adapter), uint(-1));
+        gem.approve(address(adapter), uint256(-1));
 
         adapter.join(address(this), address(this), 100 * 1e6);
         assertEq(bonus.balanceOf(self), 0 * 1e18, "no initial rewards");

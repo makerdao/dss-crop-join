@@ -55,17 +55,17 @@ contract Usr {
         weth = ERC20(pair.token1());
         pid = adapter.pid();
 
-        pair.approve(address(adapter), uint(-1));
-        pair.approve(address(masterchef), uint(-1));
+        pair.approve(address(adapter), uint256(-1));
+        pair.approve(address(masterchef), uint256(-1));
     }
 
-    function join(address usr, uint wad) public {
+    function join(address usr, uint256 wad) public {
         adapter.join(usr, usr, wad);
     }
-    function join(uint wad) public {
+    function join(uint256 wad) public {
         adapter.join(address(this), address(this), wad);
     }
-    function exit(address urn, address usr, uint wad) public {
+    function exit(address urn, address usr, uint256 wad) public {
         adapter.exit(urn, usr, wad);
     }
     function crops() public view returns (uint256) {
@@ -92,21 +92,21 @@ contract Usr {
     function tack(address src, address dst, uint256 wad) public {
         adapter.tack(src, dst, wad);
     }
-    function set_wbtc(uint val) internal {
+    function set_wbtc(uint256 val) internal {
         hevm.store(
             address(wbtc),
             keccak256(abi.encode(address(this), uint256(0))),
-            bytes32(uint(val))
+            bytes32(uint256(val))
         );
     }
-    function set_weth(uint val) internal {
+    function set_weth(uint256 val) internal {
         hevm.store(
             address(weth),
             keccak256(abi.encode(address(this), uint256(3))),
-            bytes32(uint(val))
+            bytes32(uint256(val))
         );
     }
-    function mintLPTokens(uint wbtcVal, uint wethVal) public {
+    function mintLPTokens(uint256 wbtcVal, uint256 wethVal) public {
         set_wbtc(wbtcVal);
         set_weth(wethVal);
         wbtc.transfer(address(pair), wbtcVal);
@@ -134,7 +134,7 @@ contract Usr {
     function cage(uint256 value, string memory signature, bytes memory data, uint256 eta) public {
         adapter.cage(value, signature, data, eta);
     }
-    function transfer(address to, uint val) public {
+    function transfer(address to, uint256 val) public {
         pair.transfer(to, val);
     }
 
@@ -175,9 +175,9 @@ contract SushiIntegrationTest is TestBase {
         assertEq(vat.wards(address(this)), 1);
 
         // Find the pid for the given pair
-        uint numPools = masterchef.poolLength();
-        uint pid = uint(-1);
-        for (uint i = 0; i < numPools; i++) {
+        uint256 numPools = masterchef.poolLength();
+        uint256 pid = uint256(-1);
+        for (uint256 i = 0; i < numPools; i++) {
             (address lpToken,,,) = masterchef.poolInfo(i);
             if (lpToken == address(pair)) {
                 pid = i;
@@ -185,7 +185,7 @@ contract SushiIntegrationTest is TestBase {
                 break;
             }
         }
-        assertTrue(pid != uint(-1));
+        assertTrue(pid != uint256(-1));
 
         join = new SushiJoin(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, address(timelock));
         vat.rely(address(join));
