@@ -104,7 +104,7 @@ contract Usr {
         manager.flee(address(adapter));
     }
     function flux(address src, address dst, uint256 wad) public {
-        manager.flux(address(adapter), adapter.ilk(), src, dst, wad);
+        manager.flux(address(adapter), src, dst, wad);
     }
     function giveTokens(ERC20 token, uint256 amount) internal {
         // Edge case - balance is already set for some reason
