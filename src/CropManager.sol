@@ -107,10 +107,10 @@ contract CropManagerImp {
         }
     }
 
-    function join(address crop, address urn, uint256 val) external {
+    function join(address crop, address usr, uint256 val) external {
         TokenLike(CropLike(crop).gem()).transferFrom(msg.sender, address(this), val);
         TokenLike(CropLike(crop).gem()).approve(crop, val);
-        CropLike(crop).join(getOrCreateProxy(urn), urn, val);
+        CropLike(crop).join(getOrCreateProxy(usr), usr, val);
     }
 
     function exit(address crop, address usr, uint256 val) external {
