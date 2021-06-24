@@ -64,7 +64,7 @@ contract SushiJoin is CropJoin {
         @param ilk_                 Collateral type
         @param gem_                 The collateral LP token address
         @param bonus_               The SUSHI token contract address.
-        @param masterchef_          The SushiSwap MCV1 contract address.
+        @param masterchef_          The SushiSwap MCV2 contract address.
         @param pid_                 The index of the sushi pool.
         @param migrator_            The expected value of the migration field.
         @param rewarder_            The expected value of the rewarder field.
