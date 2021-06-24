@@ -16,10 +16,16 @@
 
 pragma solidity 0.6.12;
 
-import "dss-interfaces/Interfaces.sol";
-
 import "./base.sol";
-import "../sushi.sol";
+import {ERC20, MasterChefLike, SushiJoin, TimelockLike} from "../sushi.sol";
+
+interface VatLike {
+    function wards(address) external view returns (uint256);
+    function rely(address) external;
+    function hope(address) external;
+    function gem(bytes32, address) external view returns (uint256);
+    function flux(bytes32, address, address, uint256) external;
+}
 
 interface SushiLPLike is ERC20 {
     function mint(address to) external returns (uint256);
@@ -30,7 +36,7 @@ interface SushiLPLike is ERC20 {
 contract Usr {
 
     Hevm hevm;
-    VatAbstract vat;
+    VatLike vat;
     SushiJoin adapter;
     SushiLPLike pair;
     ERC20 wbtc;
@@ -43,7 +49,7 @@ contract Usr {
         adapter = join_;
         pair = pair_;
 
-        vat = VatAbstract(address(adapter.vat()));
+        vat = VatLike(address(adapter.vat()));
         masterchef = adapter.masterchef();
         wbtc = ERC20(pair.token0());
         weth = ERC20(pair.token1());
@@ -54,16 +60,13 @@ contract Usr {
     }
 
     function join(address usr, uint wad) public {
-        adapter.join(usr, wad);
+        adapter.join(usr, usr, wad);
     }
     function join(uint wad) public {
-        adapter.join(address(this), wad);
+        adapter.join(address(this), address(this), wad);
     }
-    function exit(address usr, uint wad) public {
-        adapter.exit(usr, wad);
-    }
-    function exit(uint wad) public {
-        adapter.exit(address(this), wad);
+    function exit(address urn, address usr, uint wad) public {
+        adapter.exit(urn, usr, wad);
     }
     function crops() public view returns (uint256) {
         return adapter.crops(address(this));
@@ -81,10 +84,10 @@ contract Usr {
         return adapter.bonus().balanceOf(address(this));
     }
     function reap() public {
-        adapter.join(address(this), 0);
+        adapter.join(address(this), address(this), 0);
     }
-    function flee() public {
-        adapter.flee();
+    function flee(address urn) public {
+        adapter.flee(urn);
     }
     function tack(address src, address dst, uint256 wad) public {
         adapter.tack(src, dst, wad);
@@ -168,7 +171,7 @@ contract SushiIntegrationTest is TestBase {
     SushiLPLike pair;
     ERC20 sushi;
     MasterChefLike masterchef;
-    VatAbstract vat;
+    VatLike vat;
     bytes32 ilk = "SUSHIWBTCETH-A";
     SushiJoin join;
     address migrator;
@@ -182,7 +185,7 @@ contract SushiIntegrationTest is TestBase {
     uint256 dust = 100; // Small amount to account for division rounding errors
 
     function setUp() public {
-        vat = VatAbstract(0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B);
+        vat = VatLike(0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B);
         pair = SushiLPLike(0xC3f279090a47e80990Fe3a9c30d24Cb117EF91a8);
         sushi = ERC20(0x6B3595068778DD592e39A122f4f5a5cF09C90fE2);
         masterchef = MasterChefLike(0xEF0881eC094552b2e128Cf945EF17a6752B4Ec5d);
@@ -199,12 +202,7 @@ contract SushiIntegrationTest is TestBase {
         assertEq(masterchef.owner(), address(timelock));
 
         // Give this contract admin access on the vat
-        hevm.store(
-            address(vat),
-            keccak256(abi.encode(address(this), uint256(0))),
-            bytes32(uint256(1))
-        );
-        assertEq(vat.wards(address(this)), 1);
+        giveAuthAccess(address(vat), address(this));
 
         // Find the pid for the given pair
         uint numPools = masterchef.poolLength();
@@ -220,6 +218,9 @@ contract SushiIntegrationTest is TestBase {
         assertTrue(pid != uint(-1));
 
         join = new SushiJoin(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, rewarder, address(timelock));
+        assertEq(join.migrator(), migrator);
+        assertEq(join.rewarder(), rewarder);
+        assertEq(address(join.timelock()), address(timelock));
         vat.rely(address(join));
         user1 = new Usr(hevm, join, pair);
         user2 = new Usr(hevm, join, pair);
@@ -227,6 +228,9 @@ contract SushiIntegrationTest is TestBase {
         user1.mintLPTokens(10**8, 10 ether);
         user2.mintLPTokens(10**8, 10 ether);
         user3.mintLPTokens(10**8, 10 ether);
+        join.rely(address(user1));
+        join.rely(address(user2));
+        join.rely(address(user3));
 
         assertTrue(user1.getLPBalance() > 0);
         assertTrue(user2.getLPBalance() > 0);
@@ -309,7 +313,7 @@ contract SushiIntegrationTest is TestBase {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
 
-        usr.exit(amount);
+        usr.exit(address(usr), address(usr), amount);
 
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), pstake - amount);
@@ -359,7 +363,7 @@ contract SushiIntegrationTest is TestBase {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
 
-        usr.flee();
+        usr.flee(address(usr));
 
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), 0);
@@ -511,9 +515,9 @@ contract SushiIntegrationTest is TestBase {
         hevm.roll(block.number + 100);
 
         // Each user should get half the rewards
-        user1.exit(bal1);
+        user1.exit(address(user1), address(user1), bal1);
         assertTrue(sushi.balanceOf(address(join)) > 0);
-        user2.exit(bal2);
+        user2.exit(address(user2), address(user2), bal2);
         assertTrue(sushi.balanceOf(address(join)) < 10);    // Join adapter should only be dusty
         assertTrue(sushi.balanceOf(address(user1)) > 0);
         assertEq(sushi.balanceOf(address(user1)), sushi.balanceOf(address(user2)));
@@ -548,7 +552,7 @@ contract SushiIntegrationTest is TestBase {
 
         // user2 should be able to take the rewards as well
         user2.tack(address(user1), address(user2), amount1);
-        user2.exit(amount1);
+        user2.exit(address(user2), address(user2), amount1);
 
         assertEq(user2.getLPBalance(), amount1 + amount2);
         assertTrue(user2.sushi() > 0);
