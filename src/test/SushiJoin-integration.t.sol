@@ -613,6 +613,7 @@ contract SushiIntegrationTest is TestBase {
     }
 
     function testFail_cage_no_auth() public {
+        join.deny(address(user1));
         user1.cage();
     }
 
