@@ -175,12 +175,12 @@ contract CropJoin {
         emit Exit(val);
     }
 
-    function flee(address urn) public auth virtual {
+    function flee(address urn, address usr) public auth virtual {
         uint256 wad = vat.gem(ilk, urn);
         require(wad <= 2 ** 255);
         uint256 val = wmul(wmul(wad, nps()), toGemConversionFactor);
 
-        require(gem.transfer(urn, val));
+        require(gem.transfer(usr, val));
         vat.slip(ilk, urn, -int256(wad));
 
         total = sub(total, wad);

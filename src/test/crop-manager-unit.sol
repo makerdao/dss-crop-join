@@ -436,6 +436,6 @@ contract CropJoinManagerTest is TestBase {
         adapter.exit(address(this), address(this), 0);
     }
     function testFail_crop_flee() public {
-        adapter.flee(address(this));
+        adapter.flee(address(this), address(this));
     }
 }

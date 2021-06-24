@@ -87,7 +87,7 @@ contract Usr {
         adapter.join(address(this), address(this), 0);
     }
     function flee(address urn) public {
-        adapter.flee(urn);
+        adapter.flee(urn, urn);
     }
     function tack(address src, address dst, uint256 wad) public {
         adapter.tack(src, dst, wad);

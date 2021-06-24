@@ -103,7 +103,7 @@ contract Usr {
         adapter.join(address(this), address(this), 0);
     }
     function flee(address urn) public {
-        adapter.flee(urn);
+        adapter.flee(urn, urn);
     }
     function tack(address src, address dst, uint256 wad) public {
         adapter.tack(src, dst, wad);
@@ -378,7 +378,7 @@ contract CropUnitTest is TestBase {
 
         reward(address(adapter), 10 * 1e18);
         assertEq(gem.balanceOf(self),  950e6, "balance before flee");
-        adapter.flee(address(this));
+        adapter.flee(address(this), address(this));
         assertEq(bonus.balanceOf(self), 20 * 1e18, "rewards invariant over flee");
         assertEq(gem.balanceOf(self), 1000e6, "balance after flee");
     }

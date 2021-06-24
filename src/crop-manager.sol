@@ -33,7 +33,7 @@ interface CropLike {
     function join(address, address, uint256) external;
     function exit(address, address, uint256) external;
     function tack(address, address, uint256) external;
-    function flee(address) external;
+    function flee(address, address) external;
 }
 
 interface TokenLike {
@@ -122,7 +122,7 @@ contract CropJoinManagerImp {
     function flee(address crop) external {
         address urp = proxy[msg.sender];
         require(urp != address(0), "CropJoinManager/non-existing-urp");
-        CropLike(crop).flee(urp);
+        CropLike(crop).flee(urp, msg.sender);
     }
 
     function frob(address crop, bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) external {
