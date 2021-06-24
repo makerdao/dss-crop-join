@@ -71,16 +71,16 @@ contract Usr {
         manager.flee(address(adapter));
     }
     function frob(int256 dink, int256 dart) public {
-        manager.frob(address(adapter), adapter.ilk(), address(this), address(this), address(this), dink, dart);
+        manager.frob(address(adapter), address(this), address(this), address(this), dink, dart);
     }
     function frob(address u, address v, address w, int256 dink, int256 dart) public {
-        manager.frob(address(adapter), adapter.ilk(), u, v, w, dink, dart);
+        manager.frob(address(adapter), u, v, w, dink, dart);
     }
     function frobDirect(address u, address v, address w, int256 dink, int256 dart) public {
         VatLike(manager.vat()).frob(adapter.ilk(), u, v, w, dink, dart);
     }
     function flux(address src, address dst, uint256 wad) public {
-        manager.flux(address(adapter), adapter.ilk(), src, dst, wad);
+        manager.flux(address(adapter), src, dst, wad);
     }
     function fluxDirect(address src, address dst, uint256 wad) public {
         VatLike(manager.vat()).flux(adapter.ilk(), src, dst, wad);
