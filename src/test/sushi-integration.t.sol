@@ -848,6 +848,9 @@ contract SushiIntegrationTest is TestBase {
     }
 
     function test_cage_false_positive() public {
+        // Need admin access to uncage
+        giveAuthAccess(address(join), address(this));
+
         doJoin(user1, user1.getLPBalance());
         hevm.warp(now + 1 days);
         doJoin(user2, user2.getLPBalance());
