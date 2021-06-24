@@ -184,7 +184,7 @@ contract CropperIntegrationTest is TestBase {
         // This conveniently provisions an UrnProxy for the test contract as well.
         gem.approve(address(manager), uint256(-1));
         manager.join(address(join), address(this), 10**4 * WAD);
-        manager.frob(address(join), join.ilk(), address(this), address(this), address(this), int256(10**4 * WAD), int256(1000 * WAD));
+        manager.frob(address(join), address(this), address(this), address(this), int256(10**4 * WAD), int256(1000 * WAD));
 
         // Hope the cropper so we can bid.
         vat.hope(address(cropper));

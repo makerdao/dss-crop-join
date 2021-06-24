@@ -125,24 +125,22 @@ contract CropJoinManagerImp {
         CropLike(crop).flee(urp, msg.sender);
     }
 
-    function frob(address crop, bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) external {
+    function frob(address crop, address u, address v, address w, int256 dink, int256 dart) external {
         crop;
         require(u == msg.sender && v == msg.sender && w == msg.sender, "CropJoinManager/not-allowed");
-        // require(ilk == CropLike(crop).ilk(), "CropJoinManager/non-matching-ilk"); Not needed in cur implementation
 
         // Note: This simplification only works because of the u == v == msg.sender restriction above
         address urp = getOrCreateProxy(u);
-        VatLike(vat).frob(ilk, urp, urp, w, dink, dart);
+        VatLike(vat).frob(CropLike(crop).ilk(), urp, urp, w, dink, dart);
     }
 
-    function flux(address crop, bytes32 ilk, address src, address dst, uint256 wad) external {
+    function flux(address crop, address src, address dst, uint256 wad) external {
         require(src == msg.sender, "CropJoinManager/not-allowed");
-        require(ilk == CropLike(crop).ilk(), "CropJoinManager/non-matching-ilk");
 
         address surp = getOrCreateProxy(src);
         address durp = getOrCreateProxy(dst);
 
-        VatLike(vat).flux(ilk, surp, durp, wad);
+        VatLike(vat).flux(CropLike(crop).ilk(), surp, durp, wad);
         CropLike(crop).tack(surp, durp, wad);
     }
 
