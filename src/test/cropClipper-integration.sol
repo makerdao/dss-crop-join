@@ -17,9 +17,9 @@ pragma solidity 0.6.12;
 
 import "./base.sol";
 import {CropJoin} from "../crop.sol";
-import {CropJoinManager,CropJoinManagerImp} from "../crop-manager.sol";
-import {CropClipper} from "../cropper.sol";
-import {Usr} from './crop-manager-unit.sol';
+import {CropManager,CropManagerImp} from "../cropManager.sol";
+import {CropClipper} from "../cropClipper.sol";
+import {Usr} from './cropManager-unit.sol';
 
 interface VatLike {
     function wards(address) external view returns (uint256);
@@ -108,7 +108,7 @@ contract CropperIntegrationTest is TestBase {
     Token gem;
     Token bonus;
     CropJoin join;
-    CropJoinManagerImp manager;
+    CropManagerImp manager;
     CropClipper cropper;
     Pip pip;
     Abacus abacus;
@@ -147,9 +147,9 @@ contract CropperIntegrationTest is TestBase {
         gem     = new Token(18, 10**6 * WAD);
         bonus   = new Token(18, 10**6 * WAD);
         join    = new CropJoin(address(vat), ILK, address(gem), address(bonus));
-        CropJoinManager base = new CropJoinManager();
-        base.setImplementation(address(new CropJoinManagerImp(address(vat))));
-        manager = CropJoinManagerImp(address(base));
+        CropManager base = new CropManager();
+        base.setImplementation(address(new CropManagerImp(address(vat))));
+        manager = CropManagerImp(address(base));
         cropper = new CropClipper(address(vat), address(spotter), address(dog), address(join), address(manager));
 
         // Auth setup
@@ -202,7 +202,7 @@ contract CropperIntegrationTest is TestBase {
     }
 
     function test_take_all() public {
-        address urp = CropJoinManager(address(manager)).proxy(address(this));
+        address urp = CropManager(address(manager)).proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
@@ -240,7 +240,7 @@ contract CropperIntegrationTest is TestBase {
     }
 
     function test_take_return_collateral() public {
-        address urp = CropJoinManager(address(manager)).proxy(address(this));
+        address urp = CropManager(address(manager)).proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
@@ -288,7 +288,7 @@ contract CropperIntegrationTest is TestBase {
     }
 
     function test_yank() public {
-        address urp = CropJoinManager(address(manager)).proxy(address(this));
+        address urp = CropManager(address(manager)).proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
