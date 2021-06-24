@@ -18,6 +18,7 @@ pragma solidity 0.6.12;
 
 import "./base.sol";
 import {ERC20, MasterChefLike, SushiJoin, TimelockLike} from "../sushi.sol";
+import {CropJoinManager,CropJoinManagerImp} from "../crop-manager.sol";
 
 interface VatLike {
     function wards(address) external view returns (uint256);
@@ -38,15 +39,17 @@ contract Usr {
     Hevm hevm;
     VatLike vat;
     SushiJoin adapter;
+    CropJoinManagerImp manager;
     SushiLPLike pair;
     ERC20 wbtc;
     ERC20 weth;
     MasterChefLike masterchef;
     uint256 pid;
 
-    constructor(Hevm hevm_, SushiJoin join_, SushiLPLike pair_) public {
+    constructor(Hevm hevm_, SushiJoin join_, CropJoinManagerImp manager_, SushiLPLike pair_) public {
         hevm = hevm_;
         adapter = join_;
+        manager = manager_;
         pair = pair_;
 
         vat = VatLike(address(adapter.vat()));
@@ -55,27 +58,38 @@ contract Usr {
         weth = ERC20(pair.token1());
         pid = adapter.pid();
 
-        pair.approve(address(adapter), uint(-1));
+        pair.approve(address(manager), uint(-1));
         pair.approve(address(masterchef), uint(-1));
+
+        manager.getOrCreateProxy(address(this));
     }
 
     function join(address usr, uint wad) public {
-        adapter.join(usr, usr, wad);
+        manager.join(address(adapter), usr, wad);
     }
     function join(uint wad) public {
-        adapter.join(address(this), address(this), wad);
+        manager.join(address(adapter), address(this), wad);
     }
-    function exit(address urn, address usr, uint wad) public {
-        adapter.exit(urn, usr, wad);
+    function exit(address usr, uint wad) public {
+        manager.exit(address(adapter), usr, wad);
+    }
+    function exit(uint wad) public {
+        manager.exit(address(adapter), address(this), wad);
+    }
+    function proxy() public view returns (address) {
+        return CropJoinManager(address(manager)).proxy(address(this));
     }
     function crops() public view returns (uint256) {
-        return adapter.crops(address(this));
+        return adapter.crops(proxy());
     }
     function stake() public view returns (uint256) {
-        return adapter.stake(address(this));
+        return adapter.stake(proxy());
     }
     function gems() public view returns (uint256) {
-        return vat.gem(adapter.ilk(), address(this));
+        return adapter.vat().gem(adapter.ilk(), proxy());
+    }
+    function urn() public view returns (uint256, uint256) {
+        return adapter.vat().urns(adapter.ilk(), proxy());
     }
     function masterchefRewards() public view returns (uint256) {
         return masterchef.pendingSushi(adapter.pid(), address(this));
@@ -84,13 +98,13 @@ contract Usr {
         return adapter.bonus().balanceOf(address(this));
     }
     function reap() public {
-        adapter.join(address(this), address(this), 0);
+        manager.join(address(adapter), address(this), 0);
     }
-    function flee(address urn) public {
-        adapter.flee(urn);
+    function flee() public {
+        manager.flee(address(adapter));
     }
-    function tack(address src, address dst, uint256 wad) public {
-        adapter.tack(src, dst, wad);
+    function flux(address src, address dst, uint256 wad) public {
+        manager.flux(address(adapter), adapter.ilk(), src, dst, wad);
     }
     function giveTokens(ERC20 token, uint256 amount) internal {
         // Edge case - balance is already set for some reason
@@ -174,6 +188,7 @@ contract SushiIntegrationTest is TestBase {
     VatLike vat;
     bytes32 ilk = "SUSHIWBTCETH-A";
     SushiJoin join;
+    CropJoinManagerImp manager;
     address migrator;
     address rewarder;
     TimelockLike timelock;
@@ -218,19 +233,26 @@ contract SushiIntegrationTest is TestBase {
         assertTrue(pid != uint(-1));
 
         join = new SushiJoin(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, rewarder, address(timelock));
+        CropJoinManager base = new CropJoinManager();
+        base.setImplementation(address(new CropJoinManagerImp(address(vat))));
+        manager = CropJoinManagerImp(address(base));
+        join.rely(address(manager));
+        join.deny(address(this));    // Only access should be through manager
         assertEq(join.migrator(), migrator);
         assertEq(join.rewarder(), rewarder);
         assertEq(address(join.timelock()), address(timelock));
         vat.rely(address(join));
-        user1 = new Usr(hevm, join, pair);
-        user2 = new Usr(hevm, join, pair);
-        user3 = new Usr(hevm, join, pair);
+        user1 = new Usr(hevm, join, manager, pair);
+        user2 = new Usr(hevm, join, manager, pair);
+        user3 = new Usr(hevm, join, manager, pair);
+
+        assertTrue(user1.proxy() != address(0));
+        assertTrue(user2.proxy() != address(0));
+        assertTrue(user3.proxy() != address(0));
+
         user1.mintLPTokens(10**8, 10 ether);
         user2.mintLPTokens(10**8, 10 ether);
         user3.mintLPTokens(10**8, 10 ether);
-        join.rely(address(user1));
-        join.rely(address(user2));
-        join.rely(address(user3));
 
         assertTrue(user1.getLPBalance() > 0);
         assertTrue(user2.getLPBalance() > 0);
@@ -313,7 +335,7 @@ contract SushiIntegrationTest is TestBase {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
 
-        usr.exit(address(usr), address(usr), amount);
+        usr.exit(address(usr), amount);
 
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), pstake - amount);
@@ -363,7 +385,7 @@ contract SushiIntegrationTest is TestBase {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
 
-        usr.flee(address(usr));
+        usr.flee();
 
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), 0);
@@ -515,9 +537,9 @@ contract SushiIntegrationTest is TestBase {
         hevm.roll(block.number + 100);
 
         // Each user should get half the rewards
-        user1.exit(address(user1), address(user1), bal1);
+        user1.exit(address(user1), bal1);
         assertTrue(sushi.balanceOf(address(join)) > 0);
-        user2.exit(address(user2), address(user2), bal2);
+        user2.exit(address(user2), bal2);
         assertTrue(sushi.balanceOf(address(join)) < 10);    // Join adapter should only be dusty
         assertTrue(sushi.balanceOf(address(user1)) > 0);
         assertEq(sushi.balanceOf(address(user1)), sushi.balanceOf(address(user2)));
@@ -529,16 +551,6 @@ contract SushiIntegrationTest is TestBase {
         doFlee(user1);
     }
 
-    function testFail_cant_steal_rewards() public {
-        uint256 amount = user1.getLPBalance();
-        doJoin(user1, amount);
-
-        hevm.roll(block.number + 100);
-
-        // user2 has no stake and so should not be able to take user1's rewards
-        user2.tack(address(user1), address(user2), amount);
-    }
-
     function test_auction_take_rewards() public {
         uint256 amount1 = user1.getLPBalance();
         uint256 amount2 = user2.getLPBalance();
@@ -548,17 +560,19 @@ contract SushiIntegrationTest is TestBase {
 
         // user2 takes user1's gems (via auction or something)
         user1.hope(address(this));
-        vat.flux(ilk, address(user1), address(user2), amount1);
+        user1.flux(address(user1), address(user2), amount1);
 
         // user2 should be able to take the rewards as well
-        user2.tack(address(user1), address(user2), amount1);
-        user2.exit(address(user2), address(user2), amount1);
+        user2.exit(address(user2), amount1);
 
         assertEq(user2.getLPBalance(), amount1 + amount2);
         assertTrue(user2.sushi() > 0);
     }
 
     function test_cage() public {
+        // Need admin access to cage
+        giveAuthAccess(address(join), address(this));
+
         uint256 amount1 = user1.getLPBalance();
         uint256 amount2 = user2.getLPBalance();
         doJoin(user1, amount1);

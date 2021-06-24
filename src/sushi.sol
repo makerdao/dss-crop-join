@@ -128,7 +128,7 @@ contract SushiJoin is CropJoin {
 
     function join(address urn, address usr, uint256 val) public override {
         require(live, "SushiJoin/not-live");
-        super.join(usr, usr, val);
+        super.join(urn, usr, val);
         masterchef.deposit(pid, val, address(this));
     }
 
@@ -141,7 +141,7 @@ contract SushiJoin is CropJoin {
 
     function flee(address urn) public override {
         if (live) {
-            uint256 val = vat.gem(ilk, msg.sender);
+            uint256 val = vat.gem(ilk, urn);
             masterchef.withdraw(pid, val, address(this));
         }
         super.flee(urn);
