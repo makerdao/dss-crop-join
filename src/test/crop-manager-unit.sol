@@ -234,6 +234,23 @@ contract CropJoinManagerTest is TestBase {
         assertEq(bonus.balanceOf(address(b)), 50e18);
     }
 
+    function test_flee() public {
+        (Usr a,) = init_user();
+        a.join(10 * 1e6);
+        assertEq(gem.balanceOf(address(a)), 190 * 1e6);
+        assertEq(gem.balanceOf(address(adapter)), 10 * 1e6);
+        assertEq(bonus.balanceOf(address(a)), 0);
+        assertEq(a.gems(), 10 * 1e18);
+        assertEq(a.stake(), 10 * 1e18);
+        reward(address(adapter), 50 * 1e18);
+        a.flee();
+        assertEq(gem.balanceOf(address(a)), 200 * 1e6);
+        assertEq(gem.balanceOf(address(adapter)), 0);
+        assertEq(bonus.balanceOf(address(a)), 0);   // No rewards with flee
+        assertEq(a.gems(), 0);
+        assertEq(a.stake(), 0);
+    }
+
     function test_simple_multi_user() public {
         (Usr a, Usr b) = init_user();
 
