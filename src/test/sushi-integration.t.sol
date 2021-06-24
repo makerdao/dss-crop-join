@@ -156,6 +156,9 @@ contract Usr {
     function withdrawMasterchef(uint256 amount) public {
         masterchef.withdraw(pid, amount, address(this));
     }
+    function harvestMasterchef() public {
+        masterchef.harvest(pid, address(this));
+    }
     function getMasterchefDepositAmount() public view returns (uint256 amount) {
         (amount,) = masterchef.userInfo(pid, address(this));
     }
@@ -899,5 +902,18 @@ contract SushiIntegrationTest is TestBase {
         // Users can join/exit freely again
         doJoin(user1, user1.getLPBalance());
         doExit(user1, user1.getLPBalance());
+    }
+
+    function testFail_harvest_failure_no_rewards() public {
+        // Test the case where masterchef.harvest() fails if negative rewards are available
+        user1.depositMasterchef(50);
+        user2.harvestMasterchef();
+        hevm.roll(block.number + 856);
+        user2.depositMasterchef(124);
+        hevm.roll(block.number + 831);
+        user1.withdrawMasterchef(12);
+        hevm.roll(block.number + 688);
+        user2.withdrawMasterchef(41);
+        user2.harvestMasterchef();
     }
 }
