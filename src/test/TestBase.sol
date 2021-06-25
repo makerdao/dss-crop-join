@@ -37,19 +37,19 @@ contract Token {
     uint8 public decimals;
     mapping (address => uint) public balanceOf;
     mapping (address => mapping (address => uint)) public allowance;
-    constructor(uint8 dec, uint wad) public {
+    constructor(uint8 dec, uint256 wad) public {
         decimals = dec;
         balanceOf[msg.sender] = wad;
     }
-    function transfer(address usr, uint wad) public returns (bool) {
+    function transfer(address usr, uint256 wad) public returns (bool) {
         require(balanceOf[msg.sender] >= wad, "transfer/insufficient");
         balanceOf[msg.sender] -= wad;
         balanceOf[usr] += wad;
         return true;
     }
-    function transferFrom(address src, address dst, uint wad) public returns (bool) {
+    function transferFrom(address src, address dst, uint256 wad) public returns (bool) {
         require(balanceOf[src] >= wad, "transferFrom/insufficient");
-        if (src != msg.sender && allowance[src][msg.sender] != uint(-1)) {
+        if (src != msg.sender && allowance[src][msg.sender] != uint256(-1)) {
             require(allowance[src][msg.sender] >= wad, "transferFrom/insufficient-approval");
             allowance[src][msg.sender] = allowance[src][msg.sender] - wad;
         }
@@ -57,13 +57,13 @@ contract Token {
         balanceOf[dst] += wad;
         return true;
     }
-    function mint(address dst, uint wad) public returns (uint) {
+    function mint(address dst, uint256 wad) public returns (uint) {
         balanceOf[dst] += wad;
     }
-    function approve(address usr, uint wad) public returns (bool) {
+    function approve(address usr, uint256 wad) public returns (bool) {
         allowance[msg.sender][usr] = wad;
     }
-    function mint(uint wad) public returns (uint) {
+    function mint(uint256 wad) public returns (uint) {
         mint(msg.sender, wad);
     }
 }
@@ -73,23 +73,23 @@ contract TestBase is DSTest {
     Hevm hevm = Hevm(HEVM_ADDRESS);
     uint256 seed = 123;
 
-    function add(uint x, uint y) public pure returns (uint z) {
+    function add(uint256 x, uint256 y) public pure returns (uint256 z) {
         require((z = x + y) >= x, "ds-math-add-overflow");
     }
-    function sub(uint x, uint y) public pure returns (uint z) {
+    function sub(uint256 x, uint256 y) public pure returns (uint256 z) {
         require((z = x - y) <= x, "ds-math-sub-underflow");
     }
-    function mul(uint x, uint y) public pure returns (uint z) {
+    function mul(uint256 x, uint256 y) public pure returns (uint256 z) {
         require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
     }
     function divup(uint256 x, uint256 y) internal pure returns (uint256 z) {
         z = add(x, sub(y, 1)) / y;
     }
     uint256 constant WAD  = 10 ** 18;
-    function wmul(uint x, uint y) public pure returns (uint z) {
+    function wmul(uint256 x, uint256 y) public pure returns (uint256 z) {
         z = mul(x, y) / WAD;
     }
-    function wdiv(uint x, uint y) public pure returns (uint z) {
+    function wdiv(uint256 x, uint256 y) public pure returns (uint256 z) {
         z = mul(x, WAD) / y;
     }
     function wdivup(uint256 x, uint256 y) public pure returns (uint256 z) {
