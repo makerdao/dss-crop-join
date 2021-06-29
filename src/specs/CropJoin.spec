@@ -19,16 +19,13 @@ methods {
     tack(address, address, uint256)
 }
 
-ghost stakeSum() returns uint256;
+ghost stakeSum() returns uint256 {
+    init_state axiom stakeSum() == 0;
+}
 
 hook Sstore stake[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
     havoc stakeSum assuming stakeSum@new() == stakeSum@old() + (balance - old_balance);
 }
 
-rule stakeSum_equals_total(method f) {
-    require stakeSum() == total();
-    calldataarg arg;
-    env e;
-    sinvoke f(e, arg);
-    assert stakeSum() == total();
-}
+// invariants also check the desired property on the constructor
+invariant stakeSum_equals_total2() stakeSum() == total()
