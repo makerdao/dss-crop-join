@@ -19,7 +19,16 @@ methods {
     tack(address, address, uint256)
 }
 
-rule dummy() {
-    uint256 tot = total();
-    assert tot >= 0;
+ghost stakeSum() returns uint256;
+
+hook Sstore stake[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
+    havoc stakeSum assuming stakeSum@new() == stakeSum@old() + (balance - old_balance);
+}
+
+rule stakeSum_equals_total(method f) {
+    require stakeSum() == total();
+    calldataarg arg;
+    env e;
+    sinvoke f(e, arg);
+    assert stakeSum() == total();
 }
