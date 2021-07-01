@@ -208,4 +208,25 @@ contract TestBase is DSTest {
         }
     }
 
+    function try_call(address addr, bytes calldata data) external returns (bool) {
+        bytes memory _data = data;
+        assembly {
+            let ok := call(gas(), addr, 0, add(_data, 0x20), mload(_data), 0, 0)
+            let free := mload(0x40)
+            mstore(free, ok)
+            mstore(0x40, add(free, 32))
+            revert(free, 32)
+        }
+    }
+    function can_call(address addr, bytes memory data) internal returns (bool) {
+        (bool ok, bytes memory success) = address(this).call(
+                                            abi.encodeWithSignature(
+                                                "try_call(address,bytes)"
+                                                , addr
+                                                , data
+                                                ));
+        ok = abi.decode(success, (bool));
+        if (ok) return true;
+    }
+
 }

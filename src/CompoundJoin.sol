@@ -34,6 +34,7 @@ interface CToken is ERC20 {
     function transferAllowances(address,address) external returns (uint256);
 
     function balanceOfUnderlying(address owner) external returns (uint256);
+    function underlying() external view returns (address);
     function getAccountSnapshot(address account) external view returns (uint256, uint256, uint256, uint256);
     function borrowRatePerBlock() external view returns (uint256);
     function supplyRatePerBlock() external view returns (uint256);
