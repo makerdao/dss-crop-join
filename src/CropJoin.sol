@@ -113,13 +113,13 @@ contract CropJoin {
     }
 
     // Net Asset Valuation [wad]
-    function nav() public virtual returns (uint256) {
+    function nav() public virtual view returns (uint256) {
         uint256 _nav = gem.balanceOf(address(this));
         return mul(_nav, to18ConversionFactor);
     }
 
     // Net Assets per Share [wad]
-    function nps() public returns (uint256) {
+    function nps() public view returns (uint256) {
         if (total == 0) return WAD;
         else return wdiv(nav(), total);
     }
