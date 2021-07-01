@@ -195,6 +195,9 @@ contract CompoundIntegrationTest is TestBase {
         comp = Token(0xc00e94Cb662C3520282E6f5717214004A7f26888);
         troll = Troll(0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B);
 
+        // Give this contract admin access on the vat
+        giveAuthAccess(address(vat), address(this));
+
         strategy = new CompStrat( address(usdc)
                                 , address(cusdc)
                                 , address(comp)
@@ -211,11 +214,9 @@ contract CompoundIntegrationTest is TestBase {
         manager = CropManagerImp(address(base));
         adapter.rely(address(manager));
         adapter.deny(address(this));    // Only access should be through manager
+        vat.rely(address(adapter));
         strategy.rely(address(adapter));
         strategy.tune(0.75e18, 0.675e18, 0.674e18);
-
-        // Give this contract admin access on the vat
-        giveAuthAccess(address(vat), address(this));
 
         // give ourselves some usdc
         giveTokens(address(usdc), 1000 * 1e6);
@@ -301,9 +302,9 @@ contract CompoundIntegrationTest is TestBase {
         reward(1 days);
 
         a.join(0);
-        // ~ 0.012 COMP per year
-        assertGt(comp.balanceOf(address(a)), 0.000025 ether);
-        assertLt(comp.balanceOf(address(a)), 0.000045 ether);
+        // ~ 0.0055 COMP per year
+        assertGt(comp.balanceOf(address(a)), 0.00001 ether);
+        assertLt(comp.balanceOf(address(a)), 0.00002 ether);
     }
 
     function test_reward_wound() public {
@@ -318,9 +319,9 @@ contract CompoundIntegrationTest is TestBase {
         reward(1 days);
 
         a.join(0);
-        // ~ 0.035 COMP per year
-        assertGt(comp.balanceOf(address(a)), 0.00008 ether);
-        assertLt(comp.balanceOf(address(a)), 0.00011 ether);
+        // ~ 0.014 COMP per year
+        assertGt(comp.balanceOf(address(a)), 0.00003 ether);
+        assertLt(comp.balanceOf(address(a)), 0.00006 ether);
 
         assertLt(get_cf(), strategy.maxf());
         assertLt(get_cf(), strategy.minf());
