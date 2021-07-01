@@ -100,7 +100,7 @@ contract SushiJoin is CropJoin {
         timelock = TimelockLike(timelock_);
         pid = pid_;
 
-        ERC20(gem_).approve(masterchef_, uint256(-1));
+        ERC20(gem_).approve(masterchef_, type(uint256).max);
         live = true;
     }
 
@@ -114,7 +114,7 @@ contract SushiJoin is CropJoin {
     }
 
     // Ignore gems that have been directly transferred
-    function nav() public override view returns (uint256) {
+    function nav() public override returns (uint256) {
         return total;
     }
 
