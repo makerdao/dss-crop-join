@@ -18,7 +18,7 @@ pragma solidity 0.6.12;
 import "./TestBase.sol";
 import {CropJoin} from "../CropJoin.sol";
 import {CropManager,CropManagerImp} from "../CropManager.sol";
-import {CropClipper} from "../CropClipper.sol";
+import {ProxyManagerClipper} from "../ProxyManagerClipper.sol";
 import {Usr} from './CropManager-unit.t.sol';
 
 interface VatLike {
@@ -109,7 +109,7 @@ contract CropperIntegrationTest is TestBase {
     Token bonus;
     CropJoin join;
     CropManagerImp manager;
-    CropClipper cropper;
+    ProxyManagerClipper cropper;
     Pip pip;
     Abacus abacus;
     bytes32 constant ILK = "GEM-A";
@@ -150,7 +150,7 @@ contract CropperIntegrationTest is TestBase {
         CropManager base = new CropManager();
         base.setImplementation(address(new CropManagerImp(address(vat))));
         manager = CropManagerImp(address(base));
-        cropper = new CropClipper(address(vat), address(spotter), address(dog), address(join), address(manager));
+        cropper = new ProxyManagerClipper(address(vat), address(spotter), address(dog), address(join), address(manager));
 
         // Auth setup
         cropper.rely(address(dog));

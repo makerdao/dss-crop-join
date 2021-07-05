@@ -46,35 +46,39 @@ interface AbacusLike {
     function price(uint256, uint256) external view returns (uint256);
 }
 
-interface CropJoinLike {
+interface GemJoinLike {
     function ilk() external returns (bytes32);
-    function tack(address, address, uint256) external;
 }
 
-interface CropJoinManagerLike {
+interface ProxyManagerLike {
     function proxy(address) external returns (address);
-    function join(address, address, uint256) external;
+    function getOrCreateProxy(address) external returns (address);
+    function flux(address, address, address, uint256) external;
+    function onLiquidation(address, address, uint256) external;
+    function onVatFlux(address, address, address, uint256) external;
 }
 
 interface ProxyLike {
     function usr() external view returns (address);
 }
 
-contract CropClipper {
+// Clipper for use with the manager / proxy paradigm
+contract ProxyManagerClipper {
     // --- Auth ---
     mapping (address => uint256) public wards;
     function rely(address usr) external auth { wards[usr] = 1; emit Rely(usr); }
     function deny(address usr) external auth { wards[usr] = 0; emit Deny(usr); }
     modifier auth {
-        require(wards[msg.sender] == 1, "CropClipper/not-authorized");
+        require(wards[msg.sender] == 1, "ProxyManagerClipper/not-authorized");
         _;
     }
 
     // --- Data ---
-    bytes32             immutable public ilk;      // Collateral type of this CropClipper
-    VatLike             immutable public vat;      // Core CDP Engine
-    CropJoinLike        immutable public crop;     // CropJoin adapter this contract performs liquidations for
-    CropJoinManagerLike immutable public cropMgr;  // The crop proxy manager
+    bytes32          immutable public ilk;      // Collateral type of this ProxyManagerClipper
+    VatLike          immutable public vat;      // Core CDP Engine
+    GemJoinLike      immutable public gemJoin;  // GemJoin adapter this contract performs liquidations for
+    ProxyManagerLike immutable public proxyMgr; // The proxy manager
+    address          immutable public proxy;    // The proxy for this clipper
 
     DogLike     public dog;      // Liquidation module
     address     public vow;      // Recipient of dai raised in auctions
@@ -148,28 +152,29 @@ contract CropClipper {
     event Yank(uint256 id);
 
     // --- Init ---
-    constructor(address vat_, address spotter_, address dog_, address crop_, address cropMgr_) public {
-        vat     = VatLike(vat_);
-        spotter = SpotterLike(spotter_);
-        dog     = DogLike(dog_);
-        crop    = CropJoinLike(crop_);
-        cropMgr = CropJoinManagerLike(cropMgr_);
-        ilk     = CropJoinLike(crop_).ilk();
-        buf     = RAY;
+    constructor(address vat_, address spotter_, address dog_, address gemJoin_, address proxyMgr_) public {
+        vat      = VatLike(vat_);
+        spotter  = SpotterLike(spotter_);
+        dog      = DogLike(dog_);
+        gemJoin  = GemJoinLike(gemJoin_);
+        proxyMgr = ProxyManagerLike(proxyMgr_);
+        proxy    = ProxyManagerLike(proxyMgr_).getOrCreateProxy(address(this));
+        ilk      = GemJoinLike(gemJoin_).ilk();
+        buf      = RAY;
         wards[msg.sender] = 1;
         emit Rely(msg.sender);
     }
 
     // --- Synchronization ---
     modifier lock {
-        require(locked == 0, "CropClipper/system-locked");
+        require(locked == 0, "ProxyManagerClipper/system-locked");
         locked = 1;
         _;
         locked = 0;
     }
 
     modifier isStopped(uint256 level) {
-        require(stopped < level, "CropClipper/stopped-incorrect");
+        require(stopped < level, "ProxyManagerClipper/stopped-incorrect");
         _;
     }
 
@@ -181,7 +186,7 @@ contract CropClipper {
         else if (what == "chip")       chip = uint64(data);   // Percentage of tab to incentivize (max: 2^64 - 1 => 18.xxx WAD = 18xx%)
         else if (what == "tip")         tip = uint192(data);  // Flat fee to incentivize keepers (max: 2^192 - 1 => 6.277T RAD)
         else if (what == "stopped") stopped = data;           // Set breaker (0, 1, 2, or 3)
-        else revert("CropClipper/file-unrecognized-param");
+        else revert("ProxyManagerClipper/file-unrecognized-param");
         emit File(what, data);
     }
     function file(bytes32 what, address data) external auth lock {
@@ -189,7 +194,7 @@ contract CropClipper {
         else if (what == "dog")    dog = DogLike(data);
         else if (what == "vow")    vow = data;
         else if (what == "calc")  calc = AbacusLike(data);
-        else revert("CropClipper/file-unrecognized-param");
+        else revert("ProxyManagerClipper/file-unrecognized-param");
         emit File(what, data);
     }
 
@@ -229,7 +234,7 @@ contract CropClipper {
     function getFeedPrice() internal returns (uint256 feedPrice) {
         (PipLike pip, ) = spotter.ilks(ilk);
         (bytes32 val, bool has) = pip.peek();
-        require(has, "CropClipper/invalid-price");
+        require(has, "ProxyManagerClipper/invalid-price");
         feedPrice = rdiv(mul(uint256(val), BLN), spotter.par());
     }
 
@@ -249,11 +254,11 @@ contract CropClipper {
         address kpr   // Address that will receive incentives
     ) external auth lock isStopped(1) returns (uint256 id) {
         // Input validation
-        require(tab  >          0, "CropClipper/zero-tab");
-        require(lot  >          0, "CropClipper/zero-lot");
-        require(usr != address(0), "CropClipper/zero-usr");
+        require(tab  >          0, "ProxyManagerClipper/zero-tab");
+        require(lot  >          0, "ProxyManagerClipper/zero-lot");
+        require(usr != address(0), "ProxyManagerClipper/zero-usr");
         id = ++kicks;
-        require(id   >          0, "CropClipper/overflow");
+        require(id   >          0, "ProxyManagerClipper/overflow");
 
         active.push(id);
 
@@ -266,7 +271,7 @@ contract CropClipper {
 
         uint256 top;
         top = rmul(getFeedPrice(), buf);
-        require(top > 0, "CropClipper/zero-top-price");
+        require(top > 0, "ProxyManagerClipper/zero-top-price");
         sales[id].top = top;
 
         // incentive to kick auction
@@ -278,9 +283,8 @@ contract CropClipper {
             vat.suck(vow, kpr, coin);
         }
 
-        // Give any outstanding rewards to vault owner and move the stake over to this contract
-        cropMgr.join(address(crop), ProxyLike(usr).usr(), 0);
-        crop.tack(usr, address(this), lot);
+        // Trigger proxy manager liquidation call-back
+        proxyMgr.onLiquidation(address(gemJoin), ProxyLike(usr).usr(), lot);
 
         emit Kick(id, top, tab, lot, usr, kpr, coin);
     }
@@ -296,12 +300,12 @@ contract CropClipper {
         uint96  tic = sales[id].tic;
         uint256 top = sales[id].top;
 
-        require(usr != address(0), "CropClipper/not-running-auction");
+        require(usr != address(0), "ProxyManagerClipper/not-running-auction");
 
         // Check that auction needs reset
         // and compute current price [ray]
         (bool done,) = status(tic, top);
-        require(done, "CropClipper/cannot-reset");
+        require(done, "ProxyManagerClipper/cannot-reset");
 
         uint256 tab   = sales[id].tab;
         uint256 lot   = sales[id].lot;
@@ -309,7 +313,7 @@ contract CropClipper {
 
         uint256 feedPrice = getFeedPrice();
         top = rmul(feedPrice, buf);
-        require(top > 0, "CropClipper/zero-top-price");
+        require(top > 0, "ProxyManagerClipper/zero-top-price");
         sales[id].top = top;
 
         // incentive to redo auction
@@ -334,10 +338,10 @@ contract CropClipper {
     // amount of collateral purchased will instead be just enough to collect `tab` DAI.
     //
     // To avoid partial purchases resulting in very small leftover auctions that will
-    // never be cleared, any partial purchase must leave at least `CropClipper.chost`
+    // never be cleared, any partial purchase must leave at least `ProxyManagerClipper.chost`
     // remaining DAI target. `chost` is an asynchronously updated value equal to
     // (Vat.dust * Dog.chop(ilk) / WAD) where the values are understood to be determined
-    // by whatever they were when CropClipper.upchost() was last called. Purchase amounts
+    // by whatever they were when ProxyManagerClipper.upchost() was last called. Purchase amounts
     // will be minimally decreased when necessary to respect this limit; i.e., if the
     // specified `amt` would leave `tab < chost` but `tab > 0`, the amount actually
     // purchased will be such that `tab == chost`.
@@ -355,7 +359,7 @@ contract CropClipper {
         address usr = sales[id].usr;
         uint96  tic = sales[id].tic;
 
-        require(usr != address(0), "CropClipper/not-running-auction");
+        require(usr != address(0), "ProxyManagerClipper/not-running-auction");
 
         uint256 price;
         {
@@ -363,11 +367,11 @@ contract CropClipper {
             (done, price) = status(tic, sales[id].top);
 
             // Check that auction doesn't need reset
-            require(!done, "CropClipper/needs-reset");
+            require(!done, "ProxyManagerClipper/needs-reset");
         }
 
         // Ensure price is acceptable to buyer
-        require(max >= price, "CropClipper/too-expensive");
+        require(max >= price, "ProxyManagerClipper/too-expensive");
 
         uint256 lot = sales[id].lot;
         uint256 tab = sales[id].tab;
@@ -391,7 +395,7 @@ contract CropClipper {
                 uint256 _chost = chost;
                 if (tab - owe < _chost) {    // safe as owe < tab
                     // If tab <= chost, buyers have to take the entire lot.
-                    require(tab > _chost, "CropClipper/no-partial-purchase");
+                    require(tab > _chost, "ProxyManagerClipper/no-partial-purchase");
                     // Adjust amount to pay
                     owe = tab - _chost;      // owe' <= owe
                     // Adjust slice
@@ -406,15 +410,16 @@ contract CropClipper {
 
             // Send collateral to the UrnProxy of who
             {
-                address urp = cropMgr.proxy(who);
-                require(urp != address(0), "CropClipper/no-urn-proxy");
-                vat.flux(ilk, address(this), urp, slice);
-                crop.tack(address(this), urp, slice);  // Transfer stake+rewards
+                address urp = proxyMgr.proxy(who);
+                require(urp != address(0), "ProxyManagerClipper/no-urn-proxy");
+                vat.flux(ilk, address(this), proxy, slice);
+                proxyMgr.onVatFlux(address(gemJoin), address(this), proxy, slice);
+                proxyMgr.flux(address(gemJoin), address(this), who, slice);
             }
 
             // Do external call (if data is defined) but to be
             // extremely careful we don't allow to do it to the two
-            // contracts which the CropClipper needs to be authorized
+            // contracts which the ProxyManagerClipper needs to be authorized
             DogLike dog_ = dog;
             if (data.length > 0 && who != address(vat) && who != address(dog_)) {
                 ClipperCallee(who).clipperCall(msg.sender, owe, slice, data);
@@ -430,8 +435,9 @@ contract CropClipper {
         if (lot == 0) {
             _remove(id);
         } else if (tab == 0) {
-            vat.flux(ilk, address(this), usr, lot);
-            crop.tack(address(this), usr, lot);  // Transfer stake+rewards
+            vat.flux(ilk, address(this), proxy, lot);
+            proxyMgr.onVatFlux(address(gemJoin), address(this), proxy, lot);
+            proxyMgr.flux(address(gemJoin), address(this), ProxyLike(usr).usr(), lot);
             _remove(id);
         } else {
             sales[id].tab = tab;
@@ -490,11 +496,11 @@ contract CropClipper {
 
     // Cancel an auction during ES or via governance action.
     function yank(uint256 id) external auth lock {
-        require(sales[id].usr != address(0), "CropClipper/not-running-auction");
+        require(sales[id].usr != address(0), "ProxyManagerClipper/not-running-auction");
         dog.digs(ilk, sales[id].tab);
         uint256 lot = sales[id].lot;
         vat.flux(ilk, address(this), msg.sender, lot);
-        crop.tack(address(this), msg.sender, lot);
+        proxyMgr.onVatFlux(address(gemJoin), address(this), msg.sender, lot);
         _remove(id);
         emit Yank(id);
     }

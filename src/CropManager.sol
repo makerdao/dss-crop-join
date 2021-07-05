@@ -143,6 +143,20 @@ contract CropManagerImp {
         CropLike(crop).tack(surp, durp, wad);
     }
 
+    function onLiquidation(address crop, address usr, uint256 wad) external {
+        // NOTE - this is not permissioned so be careful with what is done here
+        // Send any outstanding rewards to usr and tack to the clipper
+        address urp = proxy[usr];
+        require(urp != address(0), "CropManager/non-existing-urp");
+        CropLike(crop).join(urp, usr, 0);
+        CropLike(crop).tack(urp, msg.sender, wad);
+    }
+
+    function onVatFlux(address crop, address from, address to, uint256 wad) external {
+        // NOTE - this is not permissioned so be careful with what is done here
+        CropLike(crop).tack(from, to, wad);
+    }
+
     function quit(bytes32 ilk, address dst) external {
         require(VatLike(vat).live() == 0, "CropManager/vat-still-live");
 
