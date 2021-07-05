@@ -202,6 +202,7 @@ contract CompoundIntegrationTest is TestBase {
                                 , address(cusdc)
                                 , address(comp)
                                 , address(troll)
+                                , 10 ** usdc.decimals()
                                 );
         adapter = new CompoundJoin( address(vat)
                               , ilk
@@ -339,9 +340,9 @@ contract CompoundIntegrationTest is TestBase {
         reward(1 days);
 
         a.join(0);
-        // ~ 0.11 COMP per year
-        assertGt(comp.balanceOf(address(a)), 0.00015 ether);
-        assertLt(comp.balanceOf(address(a)), 0.00035 ether);
+        // ~ 0.04 COMP per year
+        assertGt(comp.balanceOf(address(a)), 0.00005 ether);
+        assertLt(comp.balanceOf(address(a)), 0.00015 ether);
 
         assertLt(get_cf(), strategy.maxf(), "cf < maxf");
         assertGt(get_cf(), strategy.minf(), "cf > minf");

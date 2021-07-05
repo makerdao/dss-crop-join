@@ -133,14 +133,13 @@ contract CompStrat {
     CToken      public immutable cgem;
     CToken      public immutable comp;
     Comptroller public immutable comptroller;
+    uint256     public immutable dust;  // value (in gems) below which to stop looping
 
     uint256 public cf   = 0;  // ctoken max collateral factor       [wad]
     uint256 public maxf = 0;  // maximum target collateral factor   [wad]
     uint256 public minf = 0;  // minimum target collateral factor   [wad]
 
-    uint256 constant DUST = 1e6;  // value (in usdc) below which to stop looping
-
-    constructor(address gem_, address cgem_, address comp_, address comptroller_)
+    constructor(address gem_, address cgem_, address comp_, address comptroller_, uint256 dust_)
         public
     {
         wards[msg.sender] = 1;
@@ -149,6 +148,7 @@ contract CompStrat {
         cgem = CToken(cgem_);
         comp = CToken(comp_);
         comptroller = Comptroller(comptroller_);
+        dust = dust_;
 
         ERC20(gem_).approve(cgem_, type(uint256).max);
 
@@ -247,7 +247,7 @@ contract CompStrat {
             uint256 x2 = wdiv(sub(wmul(sub(s, loan_), minf), b),
                            sub(1e18, minf));
             uint256 max_borrow = min(x1, x2);
-            if (max_borrow < DUST) break;
+            if (max_borrow < dust) break;
             require(cgem.borrow(max_borrow) == 0);
             require(cgem.mint(max_borrow) == 0);
         }
@@ -291,7 +291,7 @@ contract CompStrat {
                                wmul(sub(s, loan_), maxf)),
                            sub(1e18, maxf));
             uint256 max_repay = min(x1, x2);
-            if (max_repay < DUST) break;
+            if (max_repay < dust) break;
             require(cgem.redeemUnderlying(max_repay) == 0, "failed-redeem");
             require(cgem.repayBorrow(max_repay) == 0, "failed-repay");
         }
