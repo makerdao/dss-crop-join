@@ -52,8 +52,6 @@ interface GemJoinLike {
 
 interface ProxyManagerLike {
     function proxy(address) external returns (address);
-    function getOrCreateProxy(address) external returns (address);
-    function flux(address, address, address, uint256) external;
     function onLiquidation(address, address, uint256) external;
     function onVatFlux(address, address, address, uint256) external;
 }
@@ -78,7 +76,6 @@ contract ProxyManagerClipper {
     VatLike          immutable public vat;      // Core CDP Engine
     GemJoinLike      immutable public gemJoin;  // GemJoin adapter this contract performs liquidations for
     ProxyManagerLike immutable public proxyMgr; // The proxy manager
-    address          immutable public proxy;    // The proxy for this clipper
 
     DogLike     public dog;      // Liquidation module
     address     public vow;      // Recipient of dai raised in auctions
@@ -158,7 +155,6 @@ contract ProxyManagerClipper {
         dog      = DogLike(dog_);
         gemJoin  = GemJoinLike(gemJoin_);
         proxyMgr = ProxyManagerLike(proxyMgr_);
-        proxy    = ProxyManagerLike(proxyMgr_).getOrCreateProxy(address(this));
         ilk      = GemJoinLike(gemJoin_).ilk();
         buf      = RAY;
         wards[msg.sender] = 1;
@@ -412,9 +408,8 @@ contract ProxyManagerClipper {
             {
                 address urp = proxyMgr.proxy(who);
                 require(urp != address(0), "ProxyManagerClipper/no-urn-proxy");
-                vat.flux(ilk, address(this), proxy, slice);
-                proxyMgr.onVatFlux(address(gemJoin), address(this), proxy, slice);
-                proxyMgr.flux(address(gemJoin), address(this), who, slice);
+                vat.flux(ilk, address(this), urp, slice);
+                proxyMgr.onVatFlux(address(gemJoin), address(this), urp, slice);
             }
 
             // Do external call (if data is defined) but to be
@@ -435,9 +430,8 @@ contract ProxyManagerClipper {
         if (lot == 0) {
             _remove(id);
         } else if (tab == 0) {
-            vat.flux(ilk, address(this), proxy, lot);
-            proxyMgr.onVatFlux(address(gemJoin), address(this), proxy, lot);
-            proxyMgr.flux(address(gemJoin), address(this), ProxyLike(usr).usr(), lot);
+            vat.flux(ilk, address(this), usr, lot);
+            proxyMgr.onVatFlux(address(gemJoin), address(this), usr, lot);
             _remove(id);
         } else {
             sales[id].tab = tab;
