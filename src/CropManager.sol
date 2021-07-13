@@ -52,11 +52,10 @@ contract UrnProxy {
 
 contract CropManager {
     mapping (address => uint256) public wards;
-    mapping (address => address) public proxy;  // UrnProxy per user
     address public implementation;
 
-    event Rely(address indexed);
-    event Deny(address indexed);
+    event Rely(address indexed usr);
+    event Deny(address indexed usr);
     event SetImplementation(address indexed);
 
     constructor() public {
@@ -64,9 +63,20 @@ contract CropManager {
         emit Rely(msg.sender);
     }
 
-    function rely(address usr) public auth { wards[usr] = 1; emit Rely(msg.sender); }
-    function deny(address usr) public auth { wards[usr] = 0; emit Deny(msg.sender); }
-    modifier auth { require(wards[msg.sender] == 1, "CropManager/non-authed"); _; }
+    function rely(address usr) external auth {
+        wards[usr] = 1;
+        emit Rely(msg.sender);
+    }
+
+    function deny(address usr) external auth {
+        wards[usr] = 0;
+        emit Deny(msg.sender);
+    }
+
+    modifier auth {
+        require(wards[msg.sender] == 1, "CropManager/non-authed");
+        _;
+    }
 
     function setImplementation(address implementation_) external auth {
         implementation = implementation_;
@@ -93,11 +103,31 @@ contract CropManager {
 
 contract CropManagerImp {
     bytes32 slot0;
-    mapping (address => address) proxy;  // UrnProxy per user
+    bytes32 slot1;
+    mapping (address => address) public proxy; // UrnProxy per user
+    mapping (address => mapping (address => uint256)) public can;
+
+    event Allow(address indexed from, address indexed to);
+    event Disallow(address indexed from, address indexed to);
 
     address public immutable vat;
     constructor(address vat_) public {
         vat = vat_;
+    }
+
+    modifier allowed(address usr) {
+        require(msg.sender == usr || can[usr][msg.sender] == 1, "CropManager/not-allowed");
+        _;
+    }
+
+    function allow(address usr) external {
+        can[msg.sender][usr] = 1;
+        emit Allow(msg.sender, usr);
+    }
+
+    function disallow(address usr) external {
+        can[msg.sender][usr] = 0;
+        emit Disallow(msg.sender, usr);
     }
 
     function getOrCreateProxy(address usr) public returns (address urp) {
@@ -125,22 +155,33 @@ contract CropManagerImp {
         CropLike(crop).flee(urp, msg.sender);
     }
 
-    function frob(address crop, address u, address v, address w, int256 dink, int256 dart) external {
-        require(u == msg.sender && v == msg.sender && w == msg.sender, "CropManager/not-allowed");
-
-        // Note: This simplification only works because of the u == v == msg.sender restriction above
+    function frob(address crop, address u, address v, address w, int256 dink, int256 dart) external allowed(u) {
+        require(u == v && w == msg.sender, "CropManager/not-matching");
         address urp = getOrCreateProxy(u);
+
         VatLike(vat).frob(CropLike(crop).ilk(), urp, urp, w, dink, dart);
     }
 
-    function flux(address crop, address src, address dst, uint256 wad) external {
-        require(src == msg.sender, "CropManager/not-allowed");
-
+    function flux(address crop, address src, address dst, uint256 wad) external allowed(src) {
         address surp = getOrCreateProxy(src);
         address durp = getOrCreateProxy(dst);
 
         VatLike(vat).flux(CropLike(crop).ilk(), surp, durp, wad);
         CropLike(crop).tack(surp, durp, wad);
+    }
+
+    function onLiquidation(address crop, address usr, uint256 wad) external {
+        // NOTE - this is not permissioned so be careful with what is done here
+        // Send any outstanding rewards to usr and tack to the clipper
+        address urp = proxy[usr];
+        require(urp != address(0), "CropManager/non-existing-urp");
+        CropLike(crop).join(urp, usr, 0);
+        CropLike(crop).tack(urp, msg.sender, wad);
+    }
+
+    function onVatFlux(address crop, address from, address to, uint256 wad) external {
+        // NOTE - this is not permissioned so be careful with what is done here
+        CropLike(crop).tack(from, to, wad);
     }
 
     function quit(bytes32 ilk, address dst) external {

@@ -52,11 +52,8 @@ contract SushiJoin is CropJoin {
     address                   public rewarder;
     TimelockLike              public timelock;
     uint256         immutable public pid;
-    bool                      public live;
 
     // --- Events ---
-    event Rely(address indexed usr);
-    event Deny(address indexed usr);
     event File(bytes32 indexed what, address data);
 
     /**
@@ -119,7 +116,7 @@ contract SushiJoin is CropJoin {
     }
 
     function crop() internal override returns (uint256) {
-        if (live) {
+        if (live == 1) {
             // This can possibly fail if no rewards are owed, but that doesn't really matter as we wouldn't get any rewards anyways
             try masterchef.harvest(pid, address(this)) {} catch {}
         }
@@ -127,27 +124,26 @@ contract SushiJoin is CropJoin {
     }
 
     function join(address urn, address usr, uint256 val) public override {
-        require(live, "SushiJoin/not-live");
         super.join(urn, usr, val);
         masterchef.deposit(pid, val, address(this));
     }
 
     function exit(address urn, address usr, uint256 val) public override {
-        if (live) {
+        if (live == 1) {
             masterchef.withdraw(pid, val, address(this));
         }
         super.exit(urn, usr, val);
     }
 
     function flee(address urn, address usr) public override {
-        if (live) {
+        if (live == 1) {
             uint256 val = vat.gem(ilk, urn);
             masterchef.withdraw(pid, val, address(this));
         }
         super.flee(urn, usr);
     }
-    function cage() external {
-        require(live, "SushiJoin/not-live");
+    function cage() override public {
+        require(live == 1, "SushiJoin/not-live");
 
         // Allow caging if any assumptions change
         require(
@@ -160,7 +156,7 @@ contract SushiJoin is CropJoin {
         _cage();
     }
     function cage(uint256 value, string calldata signature, bytes calldata data, uint256 eta) external {
-        require(live, "SushiJoin/not-live");
+        require(live == 1, "SushiJoin/not-live");
 
         // Verify the queued transaction is targetting one of the dangerous functions on Masterchef
         bytes memory callData;
@@ -198,10 +194,10 @@ contract SushiJoin is CropJoin {
     }
     function _cage() internal {
         masterchef.emergencyWithdraw(pid, address(this));
-        live = false;
+        live = 0;
     }
     function uncage() external auth {
         masterchef.deposit(pid, total, address(this));
-        live = true;
+        live = 1;
     }
 }

@@ -45,6 +45,7 @@ contract CropJoin {
     ERC20       public immutable gem;    // collateral token
     uint256     public immutable dec;    // gem decimals
     ERC20       public immutable bonus;  // rewards token
+    uint256     public live;
 
     uint256     public share;  // crops per gem    [ray]
     uint256     public total;  // total gems       [wad]
@@ -73,6 +74,7 @@ contract CropJoin {
         dec = dec_;
         to18ConversionFactor = 10 ** (18 - dec_);
         toGemConversionFactor = 10 ** dec_;
+        live = 1;
 
         bonus = ERC20(bonus_);
         wards[msg.sender] = 1;
@@ -138,6 +140,8 @@ contract CropJoin {
     }
 
     function join(address urn, address usr, uint256 val) public auth virtual {
+        require(live == 1, "CropJoin/not-live");
+
         harvest(urn, usr);
         if (val > 0) {
             uint256 wad = wdiv(mul(val, to18ConversionFactor), nps());
@@ -208,5 +212,9 @@ contract CropJoin {
         require(stake[dst] <= add(vat.gem(ilk, dst), ink));
 
         emit Tack(src, dst, wad);
+    }
+
+    function cage() public auth virtual {
+        live = 0;
     }
 }
