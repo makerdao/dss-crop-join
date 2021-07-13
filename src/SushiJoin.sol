@@ -54,8 +54,6 @@ contract SushiJoin is CropJoin {
     uint256         immutable public pid;
 
     // --- Events ---
-    event Rely(address indexed usr);
-    event Deny(address indexed usr);
     event File(bytes32 indexed what, address data);
 
     /**
