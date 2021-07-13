@@ -217,7 +217,7 @@ contract CompoundIntegrationTest is TestBase {
         adapter.deny(address(this));    // Only access should be through manager
         vat.rely(address(adapter));
         strategy.rely(address(adapter));
-        strategy.tune(0.75e18, 0.675e18, 0.674e18);
+        strategy.tune(0.675e18, 0.674e18);
 
         // give ourselves some usdc
         giveTokens(address(usdc), 1000 * 1e6);
@@ -253,7 +253,7 @@ contract CompoundIntegrationTest is TestBase {
     function can_unwind(uint repay, uint n, uint exit_, uint loan_) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
             ("unwind(uint256,uint256,uint256,uint256)", repay, n, exit_, loan_);
-        return can_call(address(adapter), call);
+        return can_call(address(strategy), call);
     }
     function can_unwind_exit(uint val) public returns (bool) {
         return can_unwind_exit(val, 0);
@@ -285,7 +285,7 @@ contract CompoundIntegrationTest is TestBase {
 
     function reward(uint256 tic) internal {
         log_named_uint("=== tic ==>", tic);
-        // accrue ~1 day of rewards
+        // accrue ~tic day of rewards
         hevm.warp(block.timestamp + tic);
         // unneeded?
         hevm.roll(block.number + tic / 15);
@@ -303,9 +303,7 @@ contract CompoundIntegrationTest is TestBase {
         reward(1 days);
 
         a.join(0);
-        // ~ 0.0055 COMP per year
-        assertGt(comp.balanceOf(address(a)), 0.00001 ether);
-        assertLt(comp.balanceOf(address(a)), 0.00002 ether);
+        assertGt(comp.balanceOf(address(a)), 0 ether);
     }
 
     function test_reward_wound() public {
@@ -320,9 +318,7 @@ contract CompoundIntegrationTest is TestBase {
         reward(1 days);
 
         a.join(0);
-        // ~ 0.014 COMP per year
-        assertGt(comp.balanceOf(address(a)), 0.00003 ether);
-        assertLt(comp.balanceOf(address(a)), 0.00006 ether);
+        assertGt(comp.balanceOf(address(a)), 0 ether);
 
         assertLt(get_cf(), strategy.maxf());
         assertLt(get_cf(), strategy.minf());
@@ -340,9 +336,7 @@ contract CompoundIntegrationTest is TestBase {
         reward(1 days);
 
         a.join(0);
-        // ~ 0.04 COMP per year
-        assertGt(comp.balanceOf(address(a)), 0.00005 ether);
-        assertLt(comp.balanceOf(address(a)), 0.00015 ether);
+        assertGt(comp.balanceOf(address(a)), 0 ether);
 
         assertLt(get_cf(), strategy.maxf(), "cf < maxf");
         assertGt(get_cf(), strategy.minf(), "cf > minf");
@@ -381,6 +375,7 @@ contract CompoundIntegrationTest is TestBase {
 
     function test_unwind_multiple() public {
         manager.join(address(adapter), address(this), 100e6);
+        strategy.wind(0, 5, 0);
 
         set_cf(0.72e18);
         strategy.unwind(0, 1, 0, 0);
@@ -407,6 +402,7 @@ contract CompoundIntegrationTest is TestBase {
         // we need a loan of
         //   L / s0 >= (u - cf) / (cf * (1 - u) * (1 - cf))
         manager.join(address(adapter), address(this), 100e6);
+        strategy.wind(0, 5, 0);
         set_cf(0.77e18);
         log_named_uint("cf", get_cf());
 
@@ -424,6 +420,7 @@ contract CompoundIntegrationTest is TestBase {
 
     function test_unwind_under_limit() public {
         manager.join(address(adapter), address(this), 100e6);
+        strategy.wind(0, 5, 0);
         set_cf(0.673e18);
         log_named_uint("cf", get_cf());
         assertTrue(!can_unwind(0, 1, 0, 0));
@@ -592,6 +589,7 @@ contract CompoundIntegrationTest is TestBase {
     // and then seek to withdraw all of the collateral
     function test_cage_single_user() public {
         manager.join(address(adapter), address(this), 100 * 1e6);
+        strategy.wind(0, 1, 0);
         set_cf(0.6745e18);
 
         // log("unwind 1");
@@ -600,12 +598,12 @@ contract CompoundIntegrationTest is TestBase {
         set_cf(0.675e18);
 
         // this causes a sub overflow unless we use zsub
-        // strategy.tune(0.75e18, 0.673e18, 0);
+        // strategy.tune(0.673e18, 0);
 
-        strategy.tune(0.75e18, 0, 0);
+        strategy.tune(0, 0);
 
         assertEq(usdc.balanceOf(address(this)),  900 * 1e6);
-        strategy.unwind(0, 6, 100 * 1e6, 0);
+        strategy.unwind(0, 3, 100 * 1e6, 0);
         assertEq(usdc.balanceOf(address(this)), 1000 * 1e6);
     }
     // test of `cage` with two users, where the strategy is unwound
@@ -650,7 +648,7 @@ contract CompoundIntegrationTest is TestBase {
 
         strategy.wind(0, 6, 0);
         reward(30 days);
-        strategy.tune(0.75e18, 0, 0);
+        strategy.tune(0, 0);
 
         strategy.unwind(0, 6, 0, 0);
 

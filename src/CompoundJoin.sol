@@ -69,6 +69,7 @@ interface Comptroller {
         address borrower,
         uint256 seizeTokens) external returns (uint256);
     function getAccountLiquidity(address) external returns (uint256,uint256,uint256);
+    function markets(address) external returns (bool,uint256,bool);
 }
 
 interface Strategy {
@@ -117,15 +118,6 @@ contract CompoundJoin is CropJoin {
         strategy.exit(val);
         super.flee(urn, usr);
     }
-
-    // todo: remove?
-    // need to deal with instances of adapter.unwind in tests
-    /*function unwind(uint256 repay_, uint256 loops_, uint256 exit_, uint256 loan_) external {
-        gem.transferFrom(msg.sender, address(this), loan_);
-        strategy.unwind(repay_, loops_, exit_, loan_);
-        super.exit(exit_);
-        gem.transfer(msg.sender, loan_);
-    }*/
 }
 
 contract CompStrat {
@@ -135,7 +127,6 @@ contract CompStrat {
     Comptroller public immutable comptroller;
     uint256     public immutable dust;  // value (in gems) below which to stop looping
 
-    uint256 public cf   = 0;  // ctoken max collateral factor       [wad]
     uint256 public maxf = 0;  // maximum target collateral factor   [wad]
     uint256 public minf = 0;  // minimum target collateral factor   [wad]
 
@@ -215,8 +206,10 @@ contract CompStrat {
         gem.transfer(msg.sender, val);
     }
 
-    function tune(uint256 cf_, uint256 maxf_, uint256 minf_) external auth {
-        cf   = cf_;
+    function tune(uint256 maxf_, uint256 minf_) external auth {
+        require(maxf_ <= WAD, "CompStrat/bad-value");
+        require(minf_ <= WAD, "CompStrat/bad-value");
+
         maxf = maxf_;
         minf = minf_;
     }
@@ -235,6 +228,7 @@ contract CompStrat {
         if (gems > 0) {
             require(cgem.mint(gems) == 0);
         }
+        (,uint256 cf,) = comptroller.markets(address(cgem));
 
         for (uint256 i=0; i < loops_; i++) {
             uint256 s = cgem.balanceOfUnderlying(address(this));
@@ -278,6 +272,7 @@ contract CompStrat {
             require(gem.transferFrom(msg.sender, address(this), loan_));
         }
         require(cgem.mint(gem.balanceOf(address(this))) == 0, "failed-mint");
+        (,uint256 cf,) = comptroller.markets(address(cgem));
 
         for (uint256 i=0; i < loops_; i++) {
             uint256 s = cgem.balanceOfUnderlying(address(this));
