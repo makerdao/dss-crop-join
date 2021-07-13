@@ -456,6 +456,8 @@ contract CropManagerTest is TestBase {
         assertEq(a.stake(), 100 * 1e18);
         a.allow(address(b));
         b.flux(address(a), address(b), 100 * 1e18);
+        assertEq(a.gems(), 0);
+        assertEq(a.stake(), 0);
         assertEq(b.gems(), 100 * 1e18);
         assertEq(b.stake(), 100 * 1e18);
         b.exit(100 * 1e6);

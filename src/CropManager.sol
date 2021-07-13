@@ -73,7 +73,10 @@ contract CropManager {
         emit Deny(msg.sender);
     }
 
-    modifier auth { require(wards[msg.sender] == 1, "CropManager/non-authed"); _; }
+    modifier auth {
+        require(wards[msg.sender] == 1, "CropManager/non-authed");
+        _;
+    }
 
     function setImplementation(address implementation_) external auth {
         implementation = implementation_;
