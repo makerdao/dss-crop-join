@@ -121,79 +121,17 @@ contract CompoundJoin is CropJoin {
 
         cgem = CToken(cgem_);
         comptroller = CToken(comptroller_);
-        ERC20(gem_).approve(cgem_, type(uint256).max);
-    }
-
-    // --- Administration ---
-    function file(bytes32 what, address data) external auth {
-        if (what == "comptroller") comptroller = ComptrollerLike(data);
-        else revert("CompoundJoin/file-unrecognized-param");
-        emit File(what, data);
-    }
-    function file(bytes32 what, uint256 data) external auth {
-        if (what == "minf") require((minf = data) <= WAD, "CompoundJoin/bad-value");
-        else if (what == "maxf") require((maxf = data) <= WAD, "CompoundJoin/bad-value");
-        else if (what == "dust") dust = data;
-        else revert("CompoundJoin/file-unrecognized-param");
-        emit File(what, data);
-    }
-
-    function nav() public override returns (uint256) {
-        uint256 _nav = add(strategy.nav(), gem.balanceOf(address(this)));
-        return mul(_nav, to18ConversionFactor);
-    }
-
-    function crop() internal override returns (uint256) {
-        strategy.harvest();
-        return super.crop();
-    }
-
-    function join(address urn, address usr, uint256 val) public override {
-        super.join(urn, usr, val);
-        strategy.join(val);
-    }
-
-    function exit(address urn, address usr, uint256 val) public override {
-        strategy.exit(val);
-        super.exit(urn, usr, val);
-    }
-
-    function flee(address urn, address usr) public override {
-        uint256 wad = vat.gem(ilk, urn);
-        uint256 val = wmul(wmul(wad, nps()), toGemConversionFactor);
-        strategy.exit(val);
-        super.flee(urn, usr);
-    }
-}
-
-contract CompStrat {
-    ERC20       public immutable gem;
-    CToken      public immutable cgem;
-    CToken      public immutable comp;
-    Comptroller public immutable comptroller;
-    uint256     public immutable dust;  // value (in gems) below which to stop looping
-
-
-    constructor(address gem_, address cgem_, address comp_, address comptroller_, uint256 dust_)
-        public
-    {
-        wards[msg.sender] = 1;
-
-        gem  = ERC20(gem_);
-        cgem = CToken(cgem_);
-        comp = CToken(comp_);
-        comptroller = Comptroller(comptroller_);
-        dust = dust_;
 
         ERC20(gem_).approve(cgem_, type(uint256).max);
 
         address[] memory ctokens = new address[](1);
         ctokens[0] = cgem_;
         uint256[] memory errors = new uint256[](1);
-        errors = Comptroller(comptroller_).enterMarkets(ctokens);
+        errors = comptroller.enterMarkets(ctokens);
         require(errors[0] == 0);
     }
 
+    // --- Math ---
     function add(uint256 x, uint256 y) public pure returns (uint256 z) {
         require((z = x + y) >= x, "ds-math-add-overflow");
     }
@@ -217,46 +155,62 @@ contract CompStrat {
         return x <= y ? x : y;
     }
 
-    function nav() public returns (uint256) {
-        uint256 _nav = add(gem.balanceOf(address(this)),
-                        sub(cgem.balanceOfUnderlying(address(this)),
-                            cgem.borrowBalanceCurrent(address(this))));
-        return _nav;
+    // --- Administration ---
+    function file(bytes32 what, address data) external auth {
+        if (what == "comptroller") comptroller = ComptrollerLike(data);
+        else revert("CompoundJoin/file-unrecognized-param");
+        emit File(what, data);
+    }
+    function file(bytes32 what, uint256 data) external auth {
+        if (what == "minf") require((minf = data) <= WAD, "CompoundJoin/bad-value");
+        else if (what == "maxf") require((maxf = data) <= WAD, "CompoundJoin/bad-value");
+        else if (what == "dust") dust = data;
+        else revert("CompoundJoin/file-unrecognized-param");
+        emit File(what, data);
     }
 
-    function harvest() external auth {
+    function nav() public override returns (uint256) {
+        return mul(
+            add(
+                gem.balanceOf(address(this)),
+                sub(
+                    cgem.balanceOfUnderlying(address(this)),
+                    cgem.borrowBalanceCurrent(address(this))
+                )
+            ),
+            to18ConversionFactor
+        );
+    }
+
+    function crop() internal override returns (uint256) {
         address[] memory ctokens = new address[](1);
         address[] memory users   = new address[](1);
         ctokens[0] = address(cgem);
         users  [0] = address(this);
 
         comptroller.claimComp(users, ctokens, true, true);
-        comp.transfer(msg.sender, comp.balanceOf(address(this)));
+
+        return super.crop();
     }
 
-    // --- Auth ---
-    mapping (address => uint256) public wards;
-    function rely(address usr) external auth { wards[usr] = 1; }
-    function deny(address usr) external auth { wards[usr] = 0; }
-    modifier auth {
-        require(wards[msg.sender] == 1, "CompStrat/not-authorized");
-        _;
+    function join(address urn, address usr, uint256 val) public override {
+        super.join(urn, usr, val);
+        require(cgem.mint(gems) == 0);
     }
 
-    function join(uint256 val) public auth {
-        gem.transferFrom(msg.sender, address(this), val);
-    }
-    function exit(uint256 val) public auth {
-        gem.transfer(msg.sender, val);
+    function exit(address urn, address usr, uint256 val) public override {
+        require(cgem.redeemUnderlying(val) == 0);
+        super.exit(urn, usr, val);
     }
 
-    function tune(uint256 maxf_, uint256 minf_) external auth {
-        require(maxf_ <= WAD, "CompStrat/bad-value");
-        require(minf_ <= WAD, "CompStrat/bad-value");
-
-        maxf = maxf_;
-        minf = minf_;
+    function flee(address urn, address usr) public override {
+        uint256 wad = vat.gem(ilk, urn);
+        uint256 val = wmul(wmul(wad, nps()), toGemConversionFactor);
+        require(cgem.redeemUnderlying(val) == 0);
+        super.flee(urn, usr);
     }
+
+    // --- Recursive Leverage Controls (Used by Keeper) ---
 
     // borrow_: how much underlying to borrow (dec decimals)
     // loops_:  how many times to repeat a max borrow loop before the
