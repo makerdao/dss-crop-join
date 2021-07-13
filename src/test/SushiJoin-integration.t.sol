@@ -281,7 +281,7 @@ contract SushiIntegrationTest is TestBase {
     // Low level actions
     function doJoin(Usr usr, uint256 amount) public {
         assertTrue(amount <= usr.getLPBalance());
-        assertTrue(join.live());
+        assertEq(join.live(), 1);
 
         uint256 pstock = join.stock();
         uint256 pshare = join.share();
@@ -332,7 +332,7 @@ contract SushiIntegrationTest is TestBase {
         uint256 psushi = usr.sushi();
         uint256 punclaimedRewards = unclaimedAdapterRewards();
 
-        if (join.live()) {
+        if (join.live() == 1) {
             assertEq(masterchefDepositAmount(), join.total());
         } else {
             assertEq(pair.balanceOf(address(join)), join.total());
@@ -344,7 +344,7 @@ contract SushiIntegrationTest is TestBase {
         assertEq(usr.stake(), pstake - amount);
         assertEq(usr.crops(), rmulup(usr.stake(), join.share()));
         assertEq(usr.gems(), pgems - amount);
-        if (join.live()) {
+        if (join.live() == 1) {
             uint256 sushiToUser = 0;
             if (ptotal > 0) {
                 uint256 newCrops = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal));
@@ -382,7 +382,7 @@ contract SushiIntegrationTest is TestBase {
         uint256 psushi = usr.sushi();
         uint256 punclaimedRewards = unclaimedAdapterRewards();
 
-        if (join.live()) {
+        if (join.live() == 1) {
             assertEq(masterchefDepositAmount(), join.total());
         } else {
             assertEq(pair.balanceOf(address(join)), join.total());
@@ -394,7 +394,7 @@ contract SushiIntegrationTest is TestBase {
         assertEq(usr.stake(), 0);
         assertEq(usr.crops(), 0);
         assertEq(usr.gems(), 0);
-        if (join.live()) {
+        if (join.live() == 1) {
             assertEq(masterchefDepositAmount(), join.total());
             assertEq(pair.balanceOf(address(join)), 0);
         } else {
@@ -685,7 +685,7 @@ contract SushiIntegrationTest is TestBase {
 
         // Anyone can cage
         user1.cage();
-        assertTrue(!join.live());
+        assertEq(join.live(), 0);
     }
 
     function test_cage_migrator_changes() public {
@@ -699,7 +699,7 @@ contract SushiIntegrationTest is TestBase {
 
         // Anyone can cage
         user1.cage();
-        assertTrue(!join.live());
+        assertEq(join.live(), 0);
     }
 
     function test_cage_rewarder_changes() public {
@@ -713,7 +713,7 @@ contract SushiIntegrationTest is TestBase {
 
         // Anyone can cage
         user1.cage();
-        assertTrue(!join.live());
+        assertEq(join.live(), 0);
     }
 
     function execute_dangerous_timelock_action(string memory signature, bytes memory data) internal {
@@ -724,7 +724,7 @@ contract SushiIntegrationTest is TestBase {
 
         // Anyone can cage
         user1.cage(0, signature, data, t);
-        assertTrue(!join.live());
+        assertEq(join.live(), 0);
 
         // Execute the dangerous command
         hevm.warp(t);
@@ -741,7 +741,7 @@ contract SushiIntegrationTest is TestBase {
         try user1.cage(0, signature, data, t) {
             assertTrue(false);
         } catch {}
-        assertTrue(join.live());
+        assertEq(join.live(), 1);
 
         if (execute) {
             // Execute the safe command
@@ -884,7 +884,7 @@ contract SushiIntegrationTest is TestBase {
             abi.encode(address(timelock), true, false),
             block.timestamp + timelock.delay()
         );
-        assertTrue(!join.live());
+        assertEq(join.live(), 0);
         assertEq(pair.balanceOf(address(join)), join.total());
         assertEq(pair.balanceOf(address(masterchef)), tokensInMasterchef - join.total());
 
@@ -895,7 +895,7 @@ contract SushiIntegrationTest is TestBase {
 
         // Governance later decides to re-activate the adapter
         join.uncage();
-        assertTrue(join.live());
+        assertEq(join.live(), 1);
         assertEq(pair.balanceOf(address(join)), 0);
         assertEq(pair.balanceOf(address(masterchef)), tokensInMasterchef);
 

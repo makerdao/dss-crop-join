@@ -111,6 +111,9 @@ contract Usr {
     function hope(address vat, address usr) public {
         MockVat(vat).hope(usr);
     }
+    function cage() public {
+        adapter.cage();
+    }
 
     function try_call(address addr, bytes calldata data) external returns (bool) {
         bytes memory _data = data;
@@ -559,5 +562,33 @@ contract CropUnitTest is TestBase {
         assertEq(diff, 280e6);
         assertEq(adapter.stake(address(b)), 0);
         assertEq(bonus.balanceOf(address(b)), preBonusBal);
+    }
+
+    function test_cage() public {
+        (Usr a,) = init_user();
+        assertEq(gem.balanceOf(address(a)), 200e6);
+        a.join(100e6);
+        assertEq(gem.balanceOf(address(a)), 100e6);
+        assertEq(adapter.live(), 1);
+        adapter.cage();
+        assertEq(adapter.live(), 0);
+
+        // Can still exit and flee
+        a.exit(address(a), address(a), 50e6);
+        assertEq(gem.balanceOf(address(a)), 150e6);
+        a.flee(address(a), address(a));
+        assertEq(gem.balanceOf(address(a)), 200e6);
+    }
+
+    function testFail_cage_no_auth() public {
+        (Usr a,) = init_user();
+        adapter.deny(address(a));
+        a.cage();
+    }
+
+    function testFail_cage_cant_join() public {
+        (Usr a,) = init_user();
+        adapter.cage();
+        a.join(100e6);
     }
 }
