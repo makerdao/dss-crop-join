@@ -565,9 +565,19 @@ contract CropUnitTest is TestBase {
     }
 
     function test_cage() public {
+        (Usr a,) = init_user();
+        assertEq(gem.balanceOf(address(a)), 200e6);
+        a.join(100e6);
+        assertEq(gem.balanceOf(address(a)), 100e6);
         assertEq(adapter.live(), 1);
         adapter.cage();
         assertEq(adapter.live(), 0);
+
+        // Can still exit and flee
+        a.exit(address(a), address(a), 50e6);
+        assertEq(gem.balanceOf(address(a)), 150e6);
+        a.flee(address(a), address(a));
+        assertEq(gem.balanceOf(address(a)), 200e6);
     }
 
     function testFail_cage_no_auth() public {
