@@ -18,7 +18,7 @@ pragma solidity 0.6.12;
 
 import "./CropJoin.sol";
 
-interface CToken is ERC20 {
+interface CTokenLike is ERC20 {
     function admin() external returns (address);
     function pendingAdmin() external returns (address);
     function comptroller() external returns (address);
@@ -56,7 +56,7 @@ interface CToken is ERC20 {
     function liquidateBorrow(address borrower, uint256 repayAmount, CToken cTokenCollateral) external returns (uint256);
 }
 
-interface Comptroller {
+interface ComptrollerLike {
     function enterMarkets(address[] calldata cTokens) external returns (uint256[] memory);
     function claimComp(address[] calldata holders, address[] calldata cTokens, bool borrowers, bool suppliers) external;
     function compAccrued(address) external returns (uint256);
@@ -86,32 +86,78 @@ interface Strategy {
 }
 
 contract CompoundJoin is CropJoin {
+    CTokenLike      immutable public cgem;
+    ComptrollerLike           public comptroller;
+    uint256                   public minf = 0;  // minimum target collateral factor [wad]
+    uint256                   public maxf = 0;  // maximum target collateral factor [wad]
+    uint256                   public dust = 0;  // value (in gems) below which to stop looping
 
-    Strategy public immutable strategy;
+    // --- Events ---
+    event File(bytes32 indexed what, address data);
+    event File(bytes32 indexed what, uint256 data);
 
-    constructor(address vat_, bytes32 ilk_, address gem_, address comp_, address strategy_)
+    /**
+        @param vat_                 MCD_VAT DSS core accounting module
+        @param ilk_                 Collateral type
+        @param gem_                 The collateral LP token address
+        @param comp_                The COMP token contract address.
+        @param cgem_                The cToken which the underlying token is the gem.
+        @param comptroller_         The Compound Comptroller address.
+    */
+    constructor(
+        address vat_,
+        bytes32 ilk_,
+        address gem_,
+        address comp_,
+        address cgem_,
+        address comptroller_
+    )
         public
         CropJoin(vat_, ilk_, gem_, comp_)
     {
-        strategy = Strategy(strategy_);
-        ERC20(gem_).approve(strategy_, type(uint256).max);
+        // Sanity checks
+        require(CToken(cgem_).comptroller() == comptroller_, "CompoundJoin/comptroller-mismatch");
+        require(CToken(cgem_).underlying() == gem_, "CompoundJoin/underlying-mismatch");
+
+        cgem = CToken(cgem_);
+        comptroller = CToken(comptroller_);
+        ERC20(gem_).approve(cgem_, type(uint256).max);
     }
+
+    // --- Administration ---
+    function file(bytes32 what, address data) external auth {
+        if (what == "comptroller") comptroller = ComptrollerLike(data);
+        else revert("CompoundJoin/file-unrecognized-param");
+        emit File(what, data);
+    }
+    function file(bytes32 what, uint256 data) external auth {
+        if (what == "minf") require((minf = data) <= WAD, "CompoundJoin/bad-value");
+        else if (what == "maxf") require((maxf = data) <= WAD, "CompoundJoin/bad-value");
+        else if (what == "dust") dust = data;
+        else revert("CompoundJoin/file-unrecognized-param");
+        emit File(what, data);
+    }
+
     function nav() public override returns (uint256) {
         uint256 _nav = add(strategy.nav(), gem.balanceOf(address(this)));
         return mul(_nav, to18ConversionFactor);
     }
+
     function crop() internal override returns (uint256) {
         strategy.harvest();
         return super.crop();
     }
+
     function join(address urn, address usr, uint256 val) public override {
         super.join(urn, usr, val);
         strategy.join(val);
     }
+
     function exit(address urn, address usr, uint256 val) public override {
         strategy.exit(val);
         super.exit(urn, usr, val);
     }
+
     function flee(address urn, address usr) public override {
         uint256 wad = vat.gem(ilk, urn);
         uint256 val = wmul(wmul(wad, nps()), toGemConversionFactor);
@@ -127,8 +173,6 @@ contract CompStrat {
     Comptroller public immutable comptroller;
     uint256     public immutable dust;  // value (in gems) below which to stop looping
 
-    uint256 public maxf = 0;  // maximum target collateral factor   [wad]
-    uint256 public minf = 0;  // minimum target collateral factor   [wad]
 
     constructor(address gem_, address cgem_, address comp_, address comptroller_, uint256 dust_)
         public
