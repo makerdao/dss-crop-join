@@ -428,6 +428,7 @@ contract CropManagerTest is TestBase {
         assertEq(adapter.stake(address(a)), 0);
         
         // Can now interact directly with the vat to exit
+        // Use vat.frob() to simulate end.skim() + end.free()
 
         a.frobDirect(address(a), address(a), address(a), -100 * 1e18, -50 * 1e18);
         assertEq(vat.gem(ilk, address(a)), 100 * 1e18);
