@@ -304,8 +304,8 @@ contract CompStrat {
             exit(exit_);
         }
 
-        uint256 u_ = wdiv(cgem.borrowBalanceStored(address(this)),
-                       cgem.balanceOfUnderlying(address(this)));
+        uint256 nb = cgem.balanceOfUnderlying(address(this));
+        uint256 u_ = nb > 0 ? wdiv(cgem.borrowBalanceStored(address(this)), nb) : 0;
         bool ramping = u  <  minf && u_ > u && u_ < maxf;
         bool damping = u  >  maxf && u_ < u && u_ > minf;
         bool tamping = u_ >= minf && u_ <= maxf;

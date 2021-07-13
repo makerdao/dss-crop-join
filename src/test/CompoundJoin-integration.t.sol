@@ -236,6 +236,8 @@ contract CompoundIntegrationTest is TestBase {
         a = new Usr(hevm, adapter, manager, ERC20(address(usdc)));
         b = new Usr(hevm, adapter, manager, ERC20(address(usdc)));
 
+        giveTokens(address(usdc), 2 * cash);
+
         usdc.transfer(address(a), cash);
         usdc.transfer(address(b), cash);
     }
@@ -589,7 +591,7 @@ contract CompoundIntegrationTest is TestBase {
     // and then seek to withdraw all of the collateral
     function test_cage_single_user() public {
         manager.join(address(adapter), address(this), 100 * 1e6);
-        strategy.wind(0, 1, 0);
+        strategy.wind(0, 5, 0);
         set_cf(0.6745e18);
 
         // log("unwind 1");
@@ -603,7 +605,7 @@ contract CompoundIntegrationTest is TestBase {
         strategy.tune(0, 0);
 
         assertEq(usdc.balanceOf(address(this)),  900 * 1e6);
-        strategy.unwind(0, 3, 100 * 1e6, 0);
+        strategy.unwind(0, 6, 100 * 1e6, 0);
         assertEq(usdc.balanceOf(address(this)), 1000 * 1e6);
     }
     // test of `cage` with two users, where the strategy is unwound
@@ -646,14 +648,15 @@ contract CompoundIntegrationTest is TestBase {
         assertEq(usdc.balanceOf(address(a)), cash - a_join);
         assertEq(usdc.balanceOf(address(b)), cash - b_join);
 
-        strategy.wind(0, 6, 0);
+        strategy.wind(0, 1, 0);
         reward(30 days);
         strategy.tune(0, 0);
 
-        strategy.unwind(0, 6, 0, 0);
+        strategy.unwind(0, 10, 0, 0);
+        assertEq(cusdc.balanceOfUnderlying(address(strategy)), 0);
 
-        //a.unwind_exit(a_join);
-        //b.unwind_exit(b_join);
+        a.exit(a_join);
+        b.exit(b_join);
 
         assertEq(usdc.balanceOf(address(a)), cash);
         assertEq(usdc.balanceOf(address(b)), cash);
