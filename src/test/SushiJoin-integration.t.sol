@@ -77,7 +77,7 @@ contract Usr {
         manager.exit(address(adapter), address(this), wad);
     }
     function proxy() public view returns (address) {
-        return CropManager(address(manager)).proxy(address(this));
+        return manager.proxy(address(this));
     }
     function crops() public view returns (uint256) {
         return adapter.crops(proxy());

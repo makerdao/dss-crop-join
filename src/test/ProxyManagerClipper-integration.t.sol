@@ -202,7 +202,7 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
     }
 
     function test_take_all() public {
-        address urp = CropManager(address(manager)).proxy(address(this));
+        address urp = manager.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
@@ -240,7 +240,7 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
     }
 
     function test_take_return_collateral() public {
-        address urp = CropManager(address(manager)).proxy(address(this));
+        address urp = manager.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
@@ -288,7 +288,7 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
     }
 
     function test_yank() public {
-        address urp = CropManager(address(manager)).proxy(address(this));
+        address urp = manager.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
