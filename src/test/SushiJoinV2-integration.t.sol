@@ -17,7 +17,7 @@
 pragma solidity 0.6.12;
 
 import "./TestBase.sol";
-import {ERC20, MasterChefLike, SushiJoin, TimelockLike} from "../SushiJoin.sol";
+import {ERC20, MasterChefLike, SushiJoin, TimelockLike} from "../SushiJoinV2.sol";
 import {CropManager,CropManagerImp} from "../CropManager.sol";
 
 interface VatLike {

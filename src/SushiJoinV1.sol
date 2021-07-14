@@ -43,7 +43,7 @@ interface TimelockLike {
 }
 
 // SushiJoin for MasterChef V1
-contract SushiJoinV1 is CropJoin {
+contract SushiJoin is CropJoin {
     MasterChefLike  immutable public masterchef;
     address                   public migrator;
     TimelockLike              public timelock;
