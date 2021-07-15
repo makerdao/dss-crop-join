@@ -58,6 +58,11 @@ contract CropManager {
     event Deny(address indexed usr);
     event SetImplementation(address indexed);
 
+    modifier auth {
+        require(wards[msg.sender] == 1, "CropManager/not-authed");
+        _;
+    }
+
     constructor() public {
         wards[msg.sender] = 1;
         emit Rely(msg.sender);
@@ -71,11 +76,6 @@ contract CropManager {
     function deny(address usr) external auth {
         wards[usr] = 0;
         emit Deny(msg.sender);
-    }
-
-    modifier auth {
-        require(wards[msg.sender] == 1, "CropManager/non-authed");
-        _;
     }
 
     function setImplementation(address implementation_) external auth {

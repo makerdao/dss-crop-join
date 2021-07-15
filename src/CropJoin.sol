@@ -25,6 +25,11 @@ contract CropJoin {
     event Deny(address indexed usr);
     event SetImplementation(address indexed);
 
+    modifier auth {
+        require(wards[msg.sender] == 1, "CropJoin/not-authed");
+        _;
+    }
+
     constructor() public {
         wards[msg.sender] = 1;
         emit Rely(msg.sender);
@@ -39,11 +44,6 @@ contract CropJoin {
     function deny(address usr) external auth {
         wards[usr] = 0;
         emit Deny(msg.sender);
-    }
-
-    modifier auth {
-        require(wards[msg.sender] == 1, "CropManager/non-authed");
-        _;
     }
 
     function setImplementation(address implementation_) external auth {
@@ -115,7 +115,10 @@ contract CropJoinImp {
     event Flee();
     event Tack(address indexed src, address indexed dst, uint256 wad);
 
-    modifier auth { require(wards[msg.sender] == 1, "CropJoin/non-authed"); _; }
+    modifier auth {
+        require(wards[msg.sender] == 1, "CropJoin/not-authed");
+        _;
+    }
 
     constructor(address vat_, bytes32 ilk_, address gem_, address bonus_) public {
         vat = VatLike(vat_);
