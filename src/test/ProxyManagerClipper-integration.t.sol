@@ -16,8 +16,8 @@
 pragma solidity 0.6.12;
 
 import "./TestBase.sol";
-import {CropJoin} from "../CropJoin.sol";
-import {CropManager,CropManagerImp} from "../CropManager.sol";
+import {CropJoin, CropJoinImp} from "../CropJoin.sol";
+import {CropManager, CropManagerImp} from "../CropManager.sol";
 import {ProxyManagerClipper} from "../ProxyManagerClipper.sol";
 import {Usr} from './CropManager-unit.t.sol';
 
@@ -107,7 +107,7 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
     
     Token gem;
     Token bonus;
-    CropJoin join;
+    CropJoinImp join;
     CropManagerImp manager;
     ProxyManagerClipper clipper;
     Pip pip;
@@ -146,7 +146,9 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
 
         gem     = new Token(18, 10**6 * WAD);
         bonus   = new Token(18, 10**6 * WAD);
-        join    = new CropJoin(address(vat), ILK, address(gem), address(bonus));
+        CropJoin baseJoin = new CropJoin();
+        baseJoin.setImplementation(address(new CropJoinImp(address(vat), ILK, address(gem), address(bonus))));
+        join = CropJoinImp(address(baseJoin));
         CropManager base = new CropManager();
         base.setImplementation(address(new CropManagerImp(address(vat))));
         manager = CropManagerImp(address(base));
@@ -156,8 +158,8 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
         clipper.rely(address(dog));
         dog.rely(address(clipper));
         vat.rely(address(join));
-        join.rely(address(manager));
-        join.deny(address(this));    // Only access should be through manager
+        baseJoin.rely(address(manager));
+        baseJoin.deny(address(this));    // Only access should be through manager
 
         // Initialize GEM-A in the Dog
         dog.file(ILK, "hole", 10**6 * RAD);

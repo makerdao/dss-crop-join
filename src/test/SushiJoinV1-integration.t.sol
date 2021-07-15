@@ -17,7 +17,7 @@
 pragma solidity 0.6.12;
 
 import "./TestBase.sol";
-import {ERC20, MasterChefLike, SushiJoin, TimelockLike} from "../SushiJoinV1.sol";
+import {ERC20, MasterChefLike, CropJoin, SushiJoinImp, TimelockLike} from "../SushiJoinV1.sol";
 import {CropManager,CropManagerImp} from "../CropManager.sol";
 
 interface VatLike {
@@ -38,7 +38,7 @@ contract Usr {
 
     Hevm hevm;
     VatLike vat;
-    SushiJoin adapter;
+    SushiJoinImp adapter;
     CropManagerImp manager;
     SushiLPLike pair;
     ERC20 wbtc;
@@ -46,7 +46,7 @@ contract Usr {
     MasterChefLike masterchef;
     uint256 pid;
 
-    constructor(Hevm hevm_, SushiJoin join_, CropManagerImp manager_, SushiLPLike pair_) public {
+    constructor(Hevm hevm_, SushiJoinImp join_, CropManagerImp manager_, SushiLPLike pair_) public {
         hevm = hevm_;
         adapter = join_;
         manager = manager_;
@@ -182,7 +182,7 @@ contract SushiV1IntegrationTest is TestBase {
     MasterChefLike masterchef;
     VatLike vat;
     bytes32 ilk = "SUSHIWBTCETH-A";
-    SushiJoin join;
+    SushiJoinImp join;
     CropManagerImp manager;
     address migrator;
     TimelockLike timelock;
@@ -216,13 +216,15 @@ contract SushiV1IntegrationTest is TestBase {
             }
         }
         assertTrue(pid != uint(-1));
-
-        join = new SushiJoin(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, address(timelock));
-        CropManager base = new CropManager();
-        base.setImplementation(address(new CropManagerImp(address(vat))));
-        manager = CropManagerImp(address(base));
-        join.rely(address(manager));
-        join.deny(address(this));    // Only access should be through manager
+        CropJoin baseJoin = new CropJoin();
+        baseJoin.setImplementation(address(new SushiJoinImp(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, address(timelock))));
+        join = SushiJoinImp(address(baseJoin));
+        join.initApproval();
+        CropManager baseManager = new CropManager();
+        baseManager.setImplementation(address(new CropManagerImp(address(vat))));
+        manager = CropManagerImp(address(baseManager));
+        baseJoin.rely(address(manager));
+        baseJoin.deny(address(this));    // Only access should be through manager
         assertEq(join.migrator(), migrator);
         assertEq(address(join.timelock()), address(timelock));
         vat.rely(address(join));

@@ -51,8 +51,8 @@ contract UrnProxy {
 }
 
 contract CropManager {
-    mapping (address => uint256) public wards;
     address public implementation;
+    mapping (address => uint256) public wards;
 
     event Rely(address indexed usr);
     event Deny(address indexed usr);

@@ -17,16 +17,16 @@
 pragma solidity 0.6.12;
 
 import "./TestBase.sol";
-import {CropJoin} from "../CropJoin.sol";
+import {CropJoin, CropJoinImp} from "../CropJoin.sol";
 import "../CropManager.sol";
 import {MockVat} from "./CropJoin-unit.t.sol";
 
 contract Usr {
 
-    CropJoin adapter;
+    CropJoinImp    adapter;
     CropManagerImp manager;
 
-    constructor(CropJoin adapter_, CropManagerImp manager_) public {
+    constructor(CropJoinImp adapter_, CropManagerImp manager_) public {
         adapter = adapter_;
         manager = manager_;
     }
@@ -132,7 +132,7 @@ contract CropManagerTest is TestBase {
     MockVat             vat;
     address             self;
     bytes32             ilk = "TOKEN-A";
-    CropJoin            adapter;
+    CropJoinImp         adapter;
     CropManagerImp      manager;
 
     function setUp() public virtual {
@@ -140,13 +140,17 @@ contract CropManagerTest is TestBase {
         gem = new Token(6, 1000 * 1e6);
         bonus = new Token(18, 0);
         vat = new MockVat();
-        adapter = new CropJoin(address(vat), ilk, address(gem), address(bonus));
+
+        CropJoin baseJoin = new CropJoin();
+        baseJoin.setImplementation(address(new CropJoinImp(address(vat), ilk, address(gem), address(bonus))));
+        adapter = CropJoinImp(address(baseJoin));
+
         CropManager base = new CropManager();
         base.setImplementation(address(new CropManagerImp(address(vat))));
         manager = CropManagerImp(address(base));
 
-        adapter.rely(address(manager));
-        adapter.deny(address(this));    // Only access should be through manager
+        baseJoin.rely(address(manager));
+        baseJoin.deny(address(this));    // Only access should be through manager
     }
 
     function init_user() internal returns (Usr a, Usr b) {

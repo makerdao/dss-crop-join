@@ -75,9 +75,9 @@ contract MockVat {
 
 contract Usr {
 
-    CropJoin adapter;
+    CropJoinImp adapter;
 
-    constructor(CropJoin adapter_) public {
+    constructor(CropJoinImp adapter_) public {
         adapter = adapter_;
     }
 
@@ -144,19 +144,21 @@ contract Usr {
 
 contract CropUnitTest is TestBase {
 
-    Token     gem;
-    Token     bonus;
-    MockVat   vat;
-    address   self;
-    bytes32   ilk = "TOKEN-A";
-    CropJoin  adapter;
+    Token       gem;
+    Token       bonus;
+    MockVat     vat;
+    address     self;
+    bytes32     ilk = "TOKEN-A";
+    CropJoinImp adapter;
 
     function setUp() public virtual {
         self = address(this);
         gem = new Token(6, 1000 * 1e6);
         bonus = new Token(18, 0);
         vat = new MockVat();
-        adapter = new CropJoin(address(vat), ilk, address(gem), address(bonus));
+        CropJoin baseJoin = new CropJoin();
+        baseJoin.setImplementation(address(new CropJoinImp(address(vat), ilk, address(gem), address(bonus))));
+        adapter = CropJoinImp(address(baseJoin));
     }
 
     function init_user() internal returns (Usr a, Usr b) {
@@ -165,8 +167,8 @@ contract CropUnitTest is TestBase {
     function init_user(uint256 cash) internal returns (Usr a, Usr b) {
         a = new Usr(adapter);
         b = new Usr(adapter);
-        adapter.rely(address(a));
-        adapter.rely(address(b));
+        CropJoin(address(adapter)).rely(address(a));
+        CropJoin(address(adapter)).rely(address(b));
 
         gem.transfer(address(a), cash);
         gem.transfer(address(b), cash);
@@ -582,7 +584,7 @@ contract CropUnitTest is TestBase {
 
     function testFail_cage_no_auth() public {
         (Usr a,) = init_user();
-        adapter.deny(address(a));
+        CropJoin(address(adapter)).deny(address(a));
         a.cage();
     }
 
