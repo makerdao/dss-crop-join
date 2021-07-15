@@ -108,8 +108,6 @@ contract CropJoinImp {
     uint256 immutable internal toGemConversionFactor;
 
     // --- Events ---
-    event Rely(address indexed);
-    event Deny(address indexed);
     event Join(uint256 val);
     event Exit(uint256 val);
     event Flee();
