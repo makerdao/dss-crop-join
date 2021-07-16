@@ -88,8 +88,8 @@ interface ERC20 {
 // receives tokens and shares them among holders
 contract CropJoinImp {
     bytes32 slot0;
-    mapping (address => uint256) public wards;
-    uint256 public live;
+    mapping (address => uint256) wards;
+    uint256 live;
 
     VatLike     public immutable vat;    // cdp engine
     bytes32     public immutable ilk;    // collateral type

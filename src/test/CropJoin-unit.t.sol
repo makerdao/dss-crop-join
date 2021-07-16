@@ -571,9 +571,9 @@ contract CropUnitTest is TestBase {
         assertEq(gem.balanceOf(address(a)), 200e6);
         a.join(100e6);
         assertEq(gem.balanceOf(address(a)), 100e6);
-        assertEq(join.live(), 1);
+        assertEq(CropJoin(address(join)).live(), 1);
         join.cage();
-        assertEq(join.live(), 0);
+        assertEq(CropJoin(address(join)).live(), 0);
 
         // Can still exit and flee
         a.exit(address(a), address(a), 50e6);
