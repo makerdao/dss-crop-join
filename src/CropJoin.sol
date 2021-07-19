@@ -16,6 +16,59 @@
 
 pragma solidity 0.6.12;
 
+contract CropJoin {
+    address public implementation;
+    mapping (address => uint256) public wards;
+    uint256 public live;
+
+    event Rely(address indexed usr);
+    event Deny(address indexed usr);
+    event SetImplementation(address indexed);
+
+    modifier auth {
+        require(wards[msg.sender] == 1, "CropJoin/not-authed");
+        _;
+    }
+
+    constructor() public {
+        wards[msg.sender] = 1;
+        emit Rely(msg.sender);
+        live = 1;
+    }
+
+    function rely(address usr) external auth {
+        wards[usr] = 1;
+        emit Rely(msg.sender);
+    }
+
+    function deny(address usr) external auth {
+        wards[usr] = 0;
+        emit Deny(msg.sender);
+    }
+
+    function setImplementation(address implementation_) external auth {
+        implementation = implementation_;
+        emit SetImplementation(implementation_);
+    }
+
+    fallback() external {
+        address _impl = implementation;
+        require(_impl != address(0));
+
+        assembly {
+            let ptr := mload(0x40)
+            calldatacopy(ptr, 0, calldatasize())
+            let result := delegatecall(gas(), _impl, ptr, calldatasize(), 0, 0)
+            let size := returndatasize()
+            returndatacopy(ptr, 0, size)
+
+            switch result
+            case 0 { revert(ptr, size) }
+            default { return(ptr, size) }
+        }
+    }
+}
+
 interface VatLike {
     function urns(bytes32, address) external view returns (uint256, uint256);
     function dai(address) external view returns (uint256);
@@ -33,19 +86,16 @@ interface ERC20 {
 }
 
 // receives tokens and shares them among holders
-contract CropJoin {
-    // --- Auth ---
-    mapping (address => uint256) public wards;
-    function rely(address usr) public auth { wards[usr] = 1; emit Rely(msg.sender); }
-    function deny(address usr) public auth { wards[usr] = 0; emit Deny(msg.sender); }
-    modifier auth { require(wards[msg.sender] == 1, "CropJoin/non-authed"); _; }
+contract CropJoinImp {
+    bytes32 slot0;
+    mapping (address => uint256) wards;
+    uint256 live;
 
     VatLike     public immutable vat;    // cdp engine
     bytes32     public immutable ilk;    // collateral type
     ERC20       public immutable gem;    // collateral token
     uint256     public immutable dec;    // gem decimals
     ERC20       public immutable bonus;  // rewards token
-    uint256     public live;
 
     uint256     public share;  // crops per gem    [ray]
     uint256     public total;  // total gems       [wad]
@@ -58,12 +108,15 @@ contract CropJoin {
     uint256 immutable internal toGemConversionFactor;
 
     // --- Events ---
-    event Rely(address indexed);
-    event Deny(address indexed);
     event Join(uint256 val);
     event Exit(uint256 val);
     event Flee();
     event Tack(address indexed src, address indexed dst, uint256 wad);
+
+    modifier auth {
+        require(wards[msg.sender] == 1, "CropJoin/not-authed");
+        _;
+    }
 
     constructor(address vat_, bytes32 ilk_, address gem_, address bonus_) public {
         vat = VatLike(vat_);
@@ -74,11 +127,7 @@ contract CropJoin {
         dec = dec_;
         to18ConversionFactor = 10 ** (18 - dec_);
         toGemConversionFactor = 10 ** dec_;
-        live = 1;
-
         bonus = ERC20(bonus_);
-        wards[msg.sender] = 1;
-        emit Rely(msg.sender);
     }
 
     function add(uint256 x, uint256 y) public pure returns (uint256 z) {

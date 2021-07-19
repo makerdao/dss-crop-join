@@ -17,16 +17,16 @@
 pragma solidity 0.6.12;
 
 import "./TestBase.sol";
-import {CropJoin} from "../CropJoin.sol";
+import {CropJoin, CropJoinImp} from "../CropJoin.sol";
 import "../CropManager.sol";
 import {MockVat} from "./CropJoin-unit.t.sol";
 
 contract Usr {
 
-    CropJoin adapter;
+    CropJoinImp    adapter;
     CropManagerImp manager;
 
-    constructor(CropJoin adapter_, CropManagerImp manager_) public {
+    constructor(CropJoinImp adapter_, CropManagerImp manager_) public {
         adapter = adapter_;
         manager = manager_;
     }
@@ -132,7 +132,7 @@ contract CropManagerTest is TestBase {
     MockVat             vat;
     address             self;
     bytes32             ilk = "TOKEN-A";
-    CropJoin            adapter;
+    CropJoinImp         join;
     CropManagerImp      manager;
 
     function setUp() public virtual {
@@ -140,21 +140,25 @@ contract CropManagerTest is TestBase {
         gem = new Token(6, 1000 * 1e6);
         bonus = new Token(18, 0);
         vat = new MockVat();
-        adapter = new CropJoin(address(vat), ilk, address(gem), address(bonus));
+
+        CropJoin baseJoin = new CropJoin();
+        baseJoin.setImplementation(address(new CropJoinImp(address(vat), ilk, address(gem), address(bonus))));
+        join = CropJoinImp(address(baseJoin));
+
         CropManager base = new CropManager();
         base.setImplementation(address(new CropManagerImp(address(vat))));
         manager = CropManagerImp(address(base));
 
-        adapter.rely(address(manager));
-        adapter.deny(address(this));    // Only access should be through manager
+        baseJoin.rely(address(manager));
+        baseJoin.deny(address(this));    // Only access should be through manager
     }
 
     function init_user() internal returns (Usr a, Usr b) {
         return init_user(200 * 1e6);
     }
     function init_user(uint256 cash) internal returns (Usr a, Usr b) {
-        a = new Usr(adapter, manager);
-        b = new Usr(adapter, manager);
+        a = new Usr(join, manager);
+        b = new Usr(join, manager);
 
         gem.transfer(address(a), cash);
         gem.transfer(address(b), cash);
@@ -169,7 +173,7 @@ contract CropManagerTest is TestBase {
 
     function test_make_proxy() public {
         assertEq(manager.proxy(address(this)), address(0));
-        manager.join(address(adapter), address(this), 0);
+        manager.join(address(join), address(this), 0);
         assertTrue(manager.proxy(address(this)) != address(0));
     }
 
@@ -186,14 +190,14 @@ contract CropManagerTest is TestBase {
         (Usr a,) = init_user();
         a.join(10 * 1e6);
         assertEq(gem.balanceOf(address(a)), 190 * 1e6);
-        assertEq(gem.balanceOf(address(adapter)), 10 * 1e6);
+        assertEq(gem.balanceOf(address(join)), 10 * 1e6);
         assertEq(bonus.balanceOf(address(a)), 0);
         assertEq(a.gems(), 10 * 1e18);
         assertEq(a.stake(), 10 * 1e18);
-        reward(address(adapter), 50 * 1e18);
+        reward(address(join), 50 * 1e18);
         a.exit(10 * 1e6);
         assertEq(gem.balanceOf(address(a)), 200 * 1e6);
-        assertEq(gem.balanceOf(address(adapter)), 0);
+        assertEq(gem.balanceOf(address(join)), 0);
         assertEq(bonus.balanceOf(address(a)), 50 * 1e18);
         assertEq(a.gems(), 0);
         assertEq(a.stake(), 0);
@@ -203,13 +207,13 @@ contract CropManagerTest is TestBase {
         (Usr a, Usr b) = init_user();
         a.join(10 * 1e6);
         assertEq(gem.balanceOf(address(a)), 190 * 1e6);
-        assertEq(gem.balanceOf(address(adapter)), 10 * 1e6);
+        assertEq(gem.balanceOf(address(join)), 10 * 1e6);
         assertEq(a.gems(), 10 * 1e18);
         assertEq(a.stake(), 10 * 1e18);
-        reward(address(adapter), 50 * 1e18);
+        reward(address(join), 50 * 1e18);
         b.join(address(a), 20 * 1e6);
         assertEq(gem.balanceOf(address(a)), 190 * 1e6);
-        assertEq(gem.balanceOf(address(adapter)), 30 * 1e6);
+        assertEq(gem.balanceOf(address(join)), 30 * 1e6);
         assertEq(a.gems(), 30 * 1e18);
         assertEq(a.stake(), 30 * 1e18);
         assertEq(bonus.balanceOf(address(a)), 50 * 1e18);
@@ -223,7 +227,7 @@ contract CropManagerTest is TestBase {
 
         // User A sends some gems + rewards to User B
         a.join(address(b), 100e6);
-        reward(address(adapter), 50e18);
+        reward(address(join), 50e18);
         assertEq(a.stake(), 0);
         assertEq(a.crops(), 0);
         assertEq(a.gems(), 0);
@@ -239,7 +243,7 @@ contract CropManagerTest is TestBase {
         assertEq(bonus.balanceOf(address(b)), 50e18);
         
         // B withdraws to A (rewards also go to A)
-        reward(address(adapter), 50e18);
+        reward(address(join), 50e18);
         b.exit(address(a), 100e6);
         assertEq(gem.balanceOf(address(a)), 200e6);
         assertEq(gem.balanceOf(address(b)), 200e6);
@@ -253,14 +257,14 @@ contract CropManagerTest is TestBase {
         (Usr a,) = init_user();
         a.join(10 * 1e6);
         assertEq(gem.balanceOf(address(a)), 190 * 1e6);
-        assertEq(gem.balanceOf(address(adapter)), 10 * 1e6);
+        assertEq(gem.balanceOf(address(join)), 10 * 1e6);
         assertEq(bonus.balanceOf(address(a)), 0);
         assertEq(a.gems(), 10 * 1e18);
         assertEq(a.stake(), 10 * 1e18);
-        reward(address(adapter), 50 * 1e18);
+        reward(address(join), 50 * 1e18);
         a.flee();
         assertEq(gem.balanceOf(address(a)), 200 * 1e6);
-        assertEq(gem.balanceOf(address(adapter)), 0);
+        assertEq(gem.balanceOf(address(join)), 0);
         assertEq(bonus.balanceOf(address(a)), 0);   // No rewards with flee
         assertEq(a.gems(), 0);
         assertEq(a.stake(), 0);
@@ -272,7 +276,7 @@ contract CropManagerTest is TestBase {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(join), 50 * 1e18);
 
         a.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
@@ -289,7 +293,7 @@ contract CropManagerTest is TestBase {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(join), 50 * 1e18);
 
         a.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
@@ -310,7 +314,7 @@ contract CropManagerTest is TestBase {
         a.join(60 * 1e6);
         b.join(40 * 1e6);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(join), 50 * 1e18);
 
         a.reap();
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
@@ -324,13 +328,13 @@ contract CropManagerTest is TestBase {
         assertEq(bonus.balanceOf(address(a)), 30 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 20 * 1e18);
 
-        reward(address(adapter), 50 * 1e18);
+        reward(address(join), 50 * 1e18);
         a.join(20 * 1e6);
         a.reap(); b.reap();
         assertEq(bonus.balanceOf(address(a)), 60 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 40 * 1e18);
 
-        reward(address(adapter), 30 * 1e18);
+        reward(address(join), 30 * 1e18);
         a.reap(); b.reap();
         assertEq(bonus.balanceOf(address(a)), 80 * 1e18);
         assertEq(bonus.balanceOf(address(b)), 50 * 1e18);
@@ -495,22 +499,22 @@ contract CropManagerTest is TestBase {
         (uint256 ink, uint256 art) = vat.urns(ilk, a.proxy());
         assertEq(ink, 100 * 1e18);
         assertEq(art, 50 * 1e18);
-        assertEq(adapter.stake(a.proxy()), 100 * 1e18);
+        assertEq(join.stake(a.proxy()), 100 * 1e18);
         (ink, art) = vat.urns(ilk, address(a));
         assertEq(ink, 0);
         assertEq(art, 0);
         assertEq(vat.gem(ilk, address(a)), 0);
-        assertEq(adapter.stake(address(a)), 0);
+        assertEq(join.stake(address(a)), 0);
         a.quit();
         (ink, art) = vat.urns(ilk, a.proxy());
         assertEq(ink, 0);
         assertEq(art, 0);
-        assertEq(adapter.stake(a.proxy()), 100 * 1e18);
+        assertEq(join.stake(a.proxy()), 100 * 1e18);
         (ink, art) = vat.urns(ilk, address(a));
         assertEq(ink, 100 * 1e18);
         assertEq(art, 50 * 1e18);
         assertEq(vat.gem(ilk, address(a)), 0);
-        assertEq(adapter.stake(address(a)), 0);
+        assertEq(join.stake(address(a)), 0);
         
         // Can now interact directly with the vat to exit
         // Use vat.frob() to simulate end.skim() + end.free()
@@ -533,12 +537,12 @@ contract CropManagerTest is TestBase {
 
     // Make sure we can't call most functions on the cropper directly
     function testFail_crop_join() public {
-        adapter.join(address(this), address(this), 0);
+        join.join(address(this), address(this), 0);
     }
     function testFail_crop_exit() public {
-        adapter.exit(address(this), address(this), 0);
+        join.exit(address(this), address(this), 0);
     }
     function testFail_crop_flee() public {
-        adapter.flee(address(this), address(this));
+        join.flee(address(this), address(this));
     }
 }

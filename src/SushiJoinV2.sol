@@ -47,11 +47,11 @@ interface TimelockLike {
 }
 
 // SushiJoin for MasterChef V2
-contract SushiJoin is CropJoin {
+contract SushiJoinImp is CropJoinImp {
     MasterChefLike  immutable public masterchef;
-    address                   public migrator;
-    address                   public rewarder;
-    TimelockLike              public timelock;
+    address         immutable public migrator;
+    address         immutable public rewarder;
+    TimelockLike    immutable public timelock;
     uint256         immutable public pid;
 
     // --- Events ---
@@ -80,7 +80,7 @@ contract SushiJoin is CropJoin {
         address timelock_
     )
         public
-        CropJoin(vat_, ilk_, gem_, bonus_)
+        CropJoinImp(vat_, ilk_, gem_, bonus_)
     {
         // Sanity checks
         address lpToken = MasterChefLike(masterchef_).lpToken(pid_);
@@ -97,17 +97,10 @@ contract SushiJoin is CropJoin {
         rewarder = rewarder_;
         timelock = TimelockLike(timelock_);
         pid = pid_;
-
-        ERC20(gem_).approve(masterchef_, type(uint256).max);
     }
 
-    // --- Administration ---
-    function file(bytes32 what, address data) external auth {
-        if (what == "migrator") migrator = data;
-        else if (what == "rewarder") rewarder = data;
-        else if (what == "timelock") timelock = TimelockLike(data);
-        else revert("SushiJoin/file-unrecognized-param");
-        emit File(what, data);
+    function initApproval() public {
+        gem.approve(address(masterchef), type(uint256).max);
     }
 
     // Ignore gems that have been directly transferred
@@ -142,6 +135,7 @@ contract SushiJoin is CropJoin {
         }
         super.flee(urn, usr);
     }
+
     function cage() override public {
         require(live == 1, "SushiJoin/not-live");
 
@@ -155,6 +149,7 @@ contract SushiJoin is CropJoin {
 
         _cage();
     }
+
     function cage(uint256 value, string calldata signature, bytes calldata data, uint256 eta) external {
         require(live == 1, "SushiJoin/not-live");
 
@@ -192,10 +187,12 @@ contract SushiJoin is CropJoin {
 
         _cage();
     }
+
     function _cage() internal {
         masterchef.emergencyWithdraw(pid, address(this));
         live = 0;
     }
+
     function uncage() external auth {
         masterchef.deposit(pid, total, address(this));
         live = 1;

@@ -51,12 +51,17 @@ contract UrnProxy {
 }
 
 contract CropManager {
-    mapping (address => uint256) public wards;
     address public implementation;
+    mapping (address => uint256) public wards;
 
     event Rely(address indexed usr);
     event Deny(address indexed usr);
     event SetImplementation(address indexed);
+
+    modifier auth {
+        require(wards[msg.sender] == 1, "CropManager/not-authed");
+        _;
+    }
 
     constructor() public {
         wards[msg.sender] = 1;
@@ -71,11 +76,6 @@ contract CropManager {
     function deny(address usr) external auth {
         wards[usr] = 0;
         emit Deny(msg.sender);
-    }
-
-    modifier auth {
-        require(wards[msg.sender] == 1, "CropManager/non-authed");
-        _;
     }
 
     function setImplementation(address implementation_) external auth {

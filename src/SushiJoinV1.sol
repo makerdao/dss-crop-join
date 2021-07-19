@@ -43,10 +43,10 @@ interface TimelockLike {
 }
 
 // SushiJoin for MasterChef V1
-contract SushiJoin is CropJoin {
+contract SushiJoinImp is CropJoinImp {
     MasterChefLike  immutable public masterchef;
-    address                   public migrator;
-    TimelockLike              public timelock;
+    address         immutable public migrator;
+    TimelockLike    immutable public timelock;
     uint256         immutable public pid;
 
     // --- Events ---
@@ -73,7 +73,7 @@ contract SushiJoin is CropJoin {
         address timelock_
     )
         public
-        CropJoin(vat_, ilk_, gem_, bonus_)
+        CropJoinImp(vat_, ilk_, gem_, bonus_)
     {
         // Sanity checks
         (address lpToken, uint256 allocPoint,,) = MasterChefLike(masterchef_).poolInfo(pid_);
@@ -87,16 +87,10 @@ contract SushiJoin is CropJoin {
         migrator = migrator_;
         timelock = TimelockLike(timelock_);
         pid = pid_;
-
-        ERC20(gem_).approve(masterchef_, type(uint256).max);
     }
 
-    // --- Administration ---
-    function file(bytes32 what, address data) external auth {
-        if (what == "migrator") migrator = data;
-        else if (what == "timelock") timelock = TimelockLike(data);
-        else revert("SushiJoin/file-unrecognized-param");
-        emit File(what, data);
+    function initApproval() public {
+        gem.approve(address(masterchef), type(uint256).max);
     }
 
     // Ignore gems that have been directly transferred
