@@ -15,10 +15,10 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 pragma solidity 0.6.12;
 
+import {ProxyManagerClipper} from "proxy-manager-clipper/ProxyManagerClipper.sol";
 import "./TestBase.sol";
 import {CropJoin, CropJoinImp} from "../CropJoin.sol";
 import {CropManager, CropManagerImp} from "../CropManager.sol";
-import {ProxyManagerClipper} from "../ProxyManagerClipper.sol";
 import {Usr} from './CropManager-unit.t.sol';
 
 interface VatLike {
