@@ -74,9 +74,9 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
     } else {
         // The "ideal" behavior, with infinite numerical precision, would be:
         //
-        //          src  dst  tack(src, dst, wad)  src               dst
-        //   stake  S_s  S_d  ------------------>  S_s - wad         S_d + wad
-        // rewards  R_s  R_d  ------------------>  R_s(1 - wad/S_s)  R_d + R_s * wad / S_s
+        //          src  dst  tack(src, dst, wad)  src                    dst
+        //   stake  S_s  S_d  ------------------>  S_s - wad              S_d + wad
+        // rewards  R_s  R_d  ------------------>  R_s * (1 - wad / S_s)  R_d + R_s * wad / S_s
 
         // wad stake is transferred from src to dst
         assert srcStake_post == srcStake_pre - wad && dstStake_post == dstStake_pre + wad;
