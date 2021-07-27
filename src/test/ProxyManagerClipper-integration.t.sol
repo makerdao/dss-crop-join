@@ -16,9 +16,9 @@
 pragma solidity 0.6.12;
 
 import "./TestBase.sol";
-import {CropJoin} from "../CropJoin.sol";
-import {CropManager,CropManagerImp} from "../CropManager.sol";
-import {CropClipper} from "../CropClipper.sol";
+import {CropJoin, CropJoinImp} from "../CropJoin.sol";
+import {CropManager, CropManagerImp} from "../CropManager.sol";
+import {ProxyManagerClipper} from "../ProxyManagerClipper.sol";
 import {Usr} from './CropManager-unit.t.sol';
 
 interface VatLike {
@@ -92,7 +92,7 @@ contract Pip {
     function set(uint256 val_) external {
         val = val_;
     }
-    function peek() external returns (bytes32, bool) {
+    function peek() external view returns (bytes32, bool) {
         return (bytes32(val), true);
     }
 }
@@ -103,13 +103,13 @@ contract Abacus is Pip {
     }
 }
 
-contract CropperIntegrationTest is TestBase {
+contract ProxyManagerClipperIntegrationTest is TestBase {
     
     Token gem;
     Token bonus;
-    CropJoin join;
+    CropJoinImp join;
     CropManagerImp manager;
-    CropClipper cropper;
+    ProxyManagerClipper clipper;
     Pip pip;
     Abacus abacus;
     bytes32 constant ILK = "GEM-A";
@@ -146,29 +146,31 @@ contract CropperIntegrationTest is TestBase {
 
         gem     = new Token(18, 10**6 * WAD);
         bonus   = new Token(18, 10**6 * WAD);
-        join    = new CropJoin(address(vat), ILK, address(gem), address(bonus));
+        CropJoin baseJoin = new CropJoin();
+        baseJoin.setImplementation(address(new CropJoinImp(address(vat), ILK, address(gem), address(bonus))));
+        join = CropJoinImp(address(baseJoin));
         CropManager base = new CropManager();
         base.setImplementation(address(new CropManagerImp(address(vat))));
         manager = CropManagerImp(address(base));
-        cropper = new CropClipper(address(vat), address(spotter), address(dog), address(join), address(manager));
+        clipper = new ProxyManagerClipper(address(vat), address(spotter), address(dog), address(join), address(manager));
 
         // Auth setup
-        cropper.rely(address(dog));
-        dog.rely(address(cropper));
+        clipper.rely(address(dog));
+        dog.rely(address(clipper));
         vat.rely(address(join));
-        join.rely(address(manager));
-        join.deny(address(this));    // Only access should be through manager
+        baseJoin.rely(address(manager));
+        baseJoin.deny(address(this));    // Only access should be through manager
 
         // Initialize GEM-A in the Dog
         dog.file(ILK, "hole", 10**6 * RAD);
         dog.file("Hole", add(dog.Hole(), 10**6 * RAD));
-        dog.file(ILK, "clip", address(cropper));
+        dog.file(ILK, "clip", address(clipper));
         dog.file(ILK, "chop", 110 * WAD / 100);
 
         // Set up pricing
         abacus = new Abacus();
         abacus.set(mul(pip.val(), 10**9));
-        cropper.file("calc", address(abacus));
+        clipper.file("calc", address(abacus));
 
         // Create Vault
         usr = new Usr(join, manager);
@@ -186,23 +188,23 @@ contract CropperIntegrationTest is TestBase {
         manager.join(address(join), address(this), 10**4 * WAD);
         manager.frob(address(join), address(this), address(this), address(this), int256(10**4 * WAD), int256(1000 * WAD));
 
-        // Hope the cropper so we can bid.
-        vat.hope(address(cropper));
+        // Hope the clipper so we can bid.
+        vat.hope(address(clipper));
 
         // Simulate fee collection; usr's Vault becomes unsafe.
-        vat.fold(ILK, cropper.vow(), int256(RAY / 5));
+        vat.fold(ILK, clipper.vow(), int256(RAY / 5));
     }
 
     function test_kick_via_bark() public {
         assertEq(usr.stake(), 10**3 * WAD);
-        assertEq(join.stake(address(cropper)), 0);
+        assertEq(join.stake(address(clipper)), 0);
         dog.bark(ILK, usr.proxy(), address(this));
         assertEq(usr.stake(), 0);
-        assertEq(join.stake(address(cropper)), 10**3 * WAD);
+        assertEq(join.stake(address(clipper)), 10**3 * WAD);
     }
 
     function test_take_all() public {
-        address urp = CropManager(address(manager)).proxy(address(this));
+        address urp = manager.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
@@ -217,16 +219,16 @@ contract CropperIntegrationTest is TestBase {
         abacus.set(price);
 
         // Assert that the statement above is indeed true.
-        (, uint256 tab, uint256 lot,,,) = cropper.sales(id);
+        (, uint256 tab, uint256 lot,,,) = clipper.sales(id);
         assertTrue(mul(lot, price) < tab);
 
         // Ensure that we have enough DAI to cover our purchase.
         assertTrue(mul(lot, price) < vat.dai(address(this)));
 
         bytes memory emptyBytes;
-        cropper.take(id, lot, price, address(this), emptyBytes);
+        clipper.take(id, lot, price, address(this), emptyBytes);
 
-        (, tab, lot,,,) = cropper.sales(id);
+        (, tab, lot,,,) = clipper.sales(id);
         assertEq(tab, 0);
         assertEq(lot, 0);
 
@@ -240,7 +242,7 @@ contract CropperIntegrationTest is TestBase {
     }
 
     function test_take_return_collateral() public {
-        address urp = CropManager(address(manager)).proxy(address(this));
+        address urp = manager.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
@@ -254,7 +256,7 @@ contract CropperIntegrationTest is TestBase {
         abacus.set(price);
 
         // Assert that the statement above is indeed true.
-        (, uint256 tab, uint256 lot,,,) = cropper.sales(id);
+        (, uint256 tab, uint256 lot,,,) = clipper.sales(id);
         assertTrue(mul(lot, price) > tab);
 
         // Ensure that we have enough DAI to cover our purchase.
@@ -263,9 +265,9 @@ contract CropperIntegrationTest is TestBase {
         uint256 expectedPurchaseSize = tab / price;
 
         bytes memory emptyBytes;
-        cropper.take(id, lot, price, address(this), emptyBytes);
+        clipper.take(id, lot, price, address(this), emptyBytes);
 
-        (, tab, lot,,,) = cropper.sales(id);
+        (, tab, lot,,,) = clipper.sales(id);
         assertEq(tab, 0);
         assertEq(lot, 0);
 
@@ -288,13 +290,13 @@ contract CropperIntegrationTest is TestBase {
     }
 
     function test_yank() public {
-        address urp = CropManager(address(manager)).proxy(address(this));
+        address urp = manager.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
         uint256 id = dog.bark(ILK, usr.proxy(), address(this));
 
-        cropper.yank(id);
+        clipper.yank(id);
 
         // The collateral has been transferred to this contract specifically--
         // yank gets called by the End, which has no UrnProxy.

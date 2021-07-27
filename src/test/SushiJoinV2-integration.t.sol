@@ -17,7 +17,8 @@
 pragma solidity 0.6.12;
 
 import "./TestBase.sol";
-import {ERC20, MasterChefLike, SushiJoin, TimelockLike} from "../SushiJoin.sol";
+import {ERC20, MasterChefLike, CropJoin, SushiJoinImp, TimelockLike} from "../SushiJoinV2.sol";
+import {CropManager,CropManagerImp} from "../CropManager.sol";
 
 interface VatLike {
     function wards(address) external view returns (uint256);
@@ -37,16 +38,18 @@ contract Usr {
 
     Hevm hevm;
     VatLike vat;
-    SushiJoin adapter;
+    SushiJoinImp adapter;
+    CropManagerImp manager;
     SushiLPLike pair;
     ERC20 wbtc;
     ERC20 weth;
     MasterChefLike masterchef;
     uint256 pid;
 
-    constructor(Hevm hevm_, SushiJoin join_, SushiLPLike pair_) public {
+    constructor(Hevm hevm_, SushiJoinImp join_, CropManagerImp manager_, SushiLPLike pair_) public {
         hevm = hevm_;
         adapter = join_;
+        manager = manager_;
         pair = pair_;
 
         vat = VatLike(address(adapter.vat()));
@@ -55,27 +58,38 @@ contract Usr {
         weth = ERC20(pair.token1());
         pid = adapter.pid();
 
-        pair.approve(address(adapter), uint256(-1));
-        pair.approve(address(masterchef), uint256(-1));
+        pair.approve(address(manager), uint(-1));
+        pair.approve(address(masterchef), uint(-1));
+
+        manager.getOrCreateProxy(address(this));
     }
 
-    function join(address usr, uint256 wad) public {
-        adapter.join(usr, usr, wad);
+    function join(address usr, uint wad) public {
+        manager.join(address(adapter), usr, wad);
     }
-    function join(uint256 wad) public {
-        adapter.join(address(this), address(this), wad);
+    function join(uint wad) public {
+        manager.join(address(adapter), address(this), wad);
     }
-    function exit(address urn, address usr, uint256 wad) public {
-        adapter.exit(urn, usr, wad);
+    function exit(address usr, uint wad) public {
+        manager.exit(address(adapter), usr, wad);
+    }
+    function exit(uint wad) public {
+        manager.exit(address(adapter), address(this), wad);
+    }
+    function proxy() public view returns (address) {
+        return manager.proxy(address(this));
     }
     function crops() public view returns (uint256) {
-        return adapter.crops(address(this));
+        return adapter.crops(proxy());
     }
     function stake() public view returns (uint256) {
-        return adapter.stake(address(this));
+        return adapter.stake(proxy());
     }
     function gems() public view returns (uint256) {
-        return vat.gem(adapter.ilk(), address(this));
+        return adapter.vat().gem(adapter.ilk(), proxy());
+    }
+    function urn() public view returns (uint256, uint256) {
+        return adapter.vat().urns(adapter.ilk(), proxy());
     }
     function masterchefRewards() public view returns (uint256) {
         return masterchef.pendingSushi(adapter.pid(), address(this));
@@ -84,29 +98,49 @@ contract Usr {
         return adapter.bonus().balanceOf(address(this));
     }
     function reap() public {
-        adapter.join(address(this), address(this), 0);
+        manager.join(address(adapter), address(this), 0);
     }
-    function flee(address urn) public {
-        adapter.flee(urn, urn);
+    function flee() public {
+        manager.flee(address(adapter));
     }
-    function tack(address src, address dst, uint256 wad) public {
-        adapter.tack(src, dst, wad);
+    function flux(address src, address dst, uint256 wad) public {
+        manager.flux(address(adapter), src, dst, wad);
     }
-    function set_wbtc(uint256 val) internal {
-        hevm.store(
-            address(wbtc),
-            keccak256(abi.encode(address(this), uint256(0))),
-            bytes32(uint256(val))
-        );
+    function giveTokens(ERC20 token, uint256 amount) internal {
+        // Edge case - balance is already set for some reason
+        if (token.balanceOf(address(this)) == amount) return;
+
+        for (uint256 i = 0; i < 200; i++) {
+            // Scan the storage for the balance storage slot
+            bytes32 prevValue = hevm.load(
+                address(token),
+                keccak256(abi.encode(address(this), uint256(i)))
+            );
+            hevm.store(
+                address(token),
+                keccak256(abi.encode(address(this), uint256(i))),
+                bytes32(amount)
+            );
+            if (token.balanceOf(address(this)) == amount) {
+                // Found it
+                return;
+            } else {
+                // Keep going after restoring the original value
+                hevm.store(
+                    address(token),
+                    keccak256(abi.encode(address(this), uint256(i))),
+                    prevValue
+                );
+            }
+        }
     }
-    function set_weth(uint256 val) internal {
-        hevm.store(
-            address(weth),
-            keccak256(abi.encode(address(this), uint256(3))),
-            bytes32(uint256(val))
-        );
+    function set_wbtc(uint val) internal {
+        giveTokens(wbtc, val);
     }
-    function mintLPTokens(uint256 wbtcVal, uint256 wethVal) public {
+    function set_weth(uint val) internal {
+        giveTokens(weth, val);
+    }
+    function mintLPTokens(uint wbtcVal, uint wethVal) public {
         set_wbtc(wbtcVal);
         set_weth(wethVal);
         wbtc.transfer(address(pair), wbtcVal);
@@ -117,10 +151,13 @@ contract Usr {
         return pair.balanceOf(address(this));
     }
     function depositMasterchef(uint256 amount) public {
-        masterchef.deposit(pid, amount);
+        masterchef.deposit(pid, amount, address(this));
     }
     function withdrawMasterchef(uint256 amount) public {
-        masterchef.withdraw(pid, amount);
+        masterchef.withdraw(pid, amount, address(this));
+    }
+    function harvestMasterchef() public {
+        masterchef.harvest(pid, address(this));
     }
     function getMasterchefDepositAmount() public view returns (uint256 amount) {
         (amount,) = masterchef.userInfo(pid, address(this));
@@ -134,8 +171,13 @@ contract Usr {
     function cage(uint256 value, string memory signature, bytes memory data, uint256 eta) public {
         adapter.cage(value, signature, data, eta);
     }
-    function transfer(address to, uint256 val) public {
+    function transfer(address to, uint val) public {
         pair.transfer(to, val);
+    }
+
+    // Include this callback to prevent error on rewards change check
+    function onSushiReward(uint256 _pid, address _user, address _recipient, uint256 _sushiAmount, uint256 _newLpAmount) external {
+
     }
 
 }
@@ -148,8 +190,10 @@ contract SushiIntegrationTest is TestBase {
     MasterChefLike masterchef;
     VatLike vat;
     bytes32 ilk = "SUSHIWBTCETH-A";
-    SushiJoin join;
+    SushiJoinImp join;
+    CropManagerImp manager;
     address migrator;
+    address rewarder;
     TimelockLike timelock;
 
     Usr user1;
@@ -160,52 +204,77 @@ contract SushiIntegrationTest is TestBase {
 
     function setUp() public {
         vat = VatLike(0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B);
-        pair = SushiLPLike(0xCEfF51756c56CeFFCA006cD410B03FFC46dd3a58);
+        pair = SushiLPLike(0xC3f279090a47e80990Fe3a9c30d24Cb117EF91a8);
         sushi = ERC20(0x6B3595068778DD592e39A122f4f5a5cF09C90fE2);
-        masterchef = MasterChefLike(0xc2EdaD668740f1aA35E4D8f227fB8E17dcA888Cd);
-        migrator = 0xb0BF8BcCDb1617084Ebc220CB1dDBaA183f5C858;
+        masterchef = MasterChefLike(0xEF0881eC094552b2e128Cf945EF17a6752B4Ec5d);
+        migrator = address(0);
+        rewarder = 0x7519C93fC5073E15d89131fD38118D73A72370F8;
         timelock = TimelockLike(0x9a8541Ddf3a932a9A922B607e9CF7301f1d47bD1);
 
-        // Give this contract admin access on the vat
+        // FIXME - this needs to be removed when owner is actually set
         hevm.store(
-            address(vat),
-            keccak256(abi.encode(address(this), uint256(0))),
-            bytes32(uint256(1))
+            address(masterchef),
+            0,
+            bytes32(uint256(address(timelock)))
         );
-        assertEq(vat.wards(address(this)), 1);
+        assertEq(masterchef.owner(), address(timelock));
+
+        // Give this contract admin access on the vat
+        giveAuthAccess(address(vat), address(this));
 
         // Find the pid for the given pair
-        uint256 numPools = masterchef.poolLength();
-        uint256 pid = uint256(-1);
-        for (uint256 i = 0; i < numPools; i++) {
-            (address lpToken,,,) = masterchef.poolInfo(i);
+        uint numPools = masterchef.poolLength();
+        uint pid = uint(-1);
+        for (uint i = 0; i < numPools; i++) {
+            address lpToken = masterchef.lpToken(i);
             if (lpToken == address(pair)) {
                 pid = i;
 
                 break;
             }
         }
-        assertTrue(pid != uint256(-1));
+        assertTrue(pid != uint(-1));
 
-        join = new SushiJoin(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, address(timelock));
+        CropJoin baseJoin = new CropJoin();
+        baseJoin.setImplementation(address(new SushiJoinImp(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, rewarder, address(timelock))));
+        join = SushiJoinImp(address(baseJoin));
+        join.initApproval();
+        CropManager baseManager = new CropManager();
+        baseManager.setImplementation(address(new CropManagerImp(address(vat))));
+        manager = CropManagerImp(address(baseManager));
+        baseJoin.rely(address(manager));
+        baseJoin.deny(address(this));    // Only access should be through manager
+        assertEq(join.migrator(), migrator);
+        assertEq(join.rewarder(), rewarder);
+        assertEq(address(join.timelock()), address(timelock));
         vat.rely(address(join));
-        user1 = new Usr(hevm, join, pair);
-        user2 = new Usr(hevm, join, pair);
-        user3 = new Usr(hevm, join, pair);
+        user1 = new Usr(hevm, join, manager, pair);
+        user2 = new Usr(hevm, join, manager, pair);
+        user3 = new Usr(hevm, join, manager, pair);
+
+        assertTrue(user1.proxy() != address(0));
+        assertTrue(user2.proxy() != address(0));
+        assertTrue(user3.proxy() != address(0));
+
         user1.mintLPTokens(10**8, 10 ether);
         user2.mintLPTokens(10**8, 10 ether);
         user3.mintLPTokens(10**8, 10 ether);
-        join.rely(address(user1));
-        join.rely(address(user2));
-        join.rely(address(user3));
 
         assertTrue(user1.getLPBalance() > 0);
         assertTrue(user2.getLPBalance() > 0);
         assertTrue(user3.getLPBalance() > 0);
+
+        // Set this contract as admin of the timelock
+        hevm.store(
+            address(timelock),
+            bytes32(uint256(0)),
+            bytes32(uint256(address(this)))
+        );
+        assertEq(timelock.admin(), address(this));
     }
 
-    function unclaimedAdapterRewards() public view returns (uint256) {
-        return masterchef.pendingSushi(join.pid(), address(join));
+    function unclaimedAdapterRewards() public view returns (uint256 amount) {
+        try masterchef.pendingSushi(join.pid(), address(join)) returns (uint256 a) { amount = a; } catch {}
     }
 
     function masterchefDepositAmount() public view returns (uint256 joinAmount) {
@@ -215,7 +284,7 @@ contract SushiIntegrationTest is TestBase {
     // Low level actions
     function doJoin(Usr usr, uint256 amount) public {
         assertTrue(amount <= usr.getLPBalance());
-        assertTrue(join.live());
+        assertEq(CropJoin(address(join)).live(), 1);
 
         uint256 pstock = join.stock();
         uint256 pshare = join.share();
@@ -235,9 +304,9 @@ contract SushiIntegrationTest is TestBase {
             uint256 newCrops = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal));
             if (newCrops > pcrops) sushiToUser = newCrops - pcrops;
         }
-        assertEq(usr.sushi(), psushi + sushiToUser);
+        assertEqApprox(usr.sushi(), psushi + sushiToUser, 1);
         if (join.total() > 0) {
-            assertEq(join.stock(), pstock + punclaimedRewards - sushiToUser);
+            assertEqApprox(join.stock(), pstock + punclaimedRewards - sushiToUser, 1);
         } else {
             assertTrue(join.stock() <= 1);  // May be a slight rounding error
         }
@@ -246,12 +315,12 @@ contract SushiIntegrationTest is TestBase {
         assertEq(usr.crops(), rmulup(usr.stake(), join.share()));
         assertEq(usr.gems(), pgems + amount);
         assertEq(pair.balanceOf(address(join)), 0);
-        assertEq(unclaimedAdapterRewards(), 0);
+        assertEqApprox(unclaimedAdapterRewards(), 0, 1);
         assertEq(masterchefDepositAmount(), join.total());
         if (ptotal > 0) {
-            assertEq(join.share(), pshare + rdiv(punclaimedRewards, ptotal));
+            assertEqApproxBPS(join.share(), pshare + rdiv(punclaimedRewards, ptotal), 1);
         } else {
-            assertEq(join.share(), pshare);
+            assertEqApproxBPS(join.share(), pshare, 1);
         }
     }
     function doExit(Usr usr, uint256 amount) public {
@@ -266,44 +335,44 @@ contract SushiIntegrationTest is TestBase {
         uint256 psushi = usr.sushi();
         uint256 punclaimedRewards = unclaimedAdapterRewards();
 
-        if (join.live()) {
+        if (CropJoin(address(join)).live() == 1) {
             assertEq(masterchefDepositAmount(), join.total());
         } else {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
 
-        usr.exit(address(usr), address(usr), amount);
+        usr.exit(address(usr), amount);
 
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), pstake - amount);
         assertEq(usr.crops(), rmulup(usr.stake(), join.share()));
         assertEq(usr.gems(), pgems - amount);
-        if (join.live()) {
+        if (CropJoin(address(join)).live() == 1) {
             uint256 sushiToUser = 0;
             if (ptotal > 0) {
                 uint256 newCrops = rmul(pstake, pshare + rdiv(punclaimedRewards, ptotal));
                 if (newCrops > pcrops) sushiToUser = newCrops - pcrops;
             }
-            assertEq(usr.sushi(), psushi + sushiToUser);
+            assertEqApprox(usr.sushi(), psushi + sushiToUser, 1);
             if (join.total() > 0) {
-                assertEq(join.stock(), pstock + punclaimedRewards - sushiToUser);
+                assertEqApprox(join.stock(), pstock + punclaimedRewards - sushiToUser, 1);
             } else {
                 assertTrue(join.stock() <= dust);  // May be a slight rounding error
             }
             if (ptotal > 0) {
-                assertEq(join.share(), pshare + rdiv(punclaimedRewards, ptotal));
+                assertEqApproxBPS(join.share(), pshare + rdiv(punclaimedRewards, ptotal), 50);
             } else {
-                assertEq(join.share(), pshare);
+                assertEqApproxBPS(join.share(), pshare, 1);
             }
             assertEq(masterchefDepositAmount(), join.total());
             assertEq(pair.balanceOf(address(join)), 0);
             assertEq(unclaimedAdapterRewards(), 0);
         } else {
             assertEq(join.stock(), pstock);
-            assertEq(join.share(), pshare);
+            assertEqApproxBPS(join.share(), pshare, 1);
             assertEq(masterchefDepositAmount(), 0);
             assertEq(pair.balanceOf(address(join)), join.total());
-            assertEq(unclaimedAdapterRewards(), punclaimedRewards);
+            assertEqApprox(unclaimedAdapterRewards(), punclaimedRewards, 1);
             assertEq(usr.sushi(), psushi);
         }
     }
@@ -316,19 +385,19 @@ contract SushiIntegrationTest is TestBase {
         uint256 psushi = usr.sushi();
         uint256 punclaimedRewards = unclaimedAdapterRewards();
 
-        if (join.live()) {
+        if (CropJoin(address(join)).live() == 1) {
             assertEq(masterchefDepositAmount(), join.total());
         } else {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
 
-        usr.flee(address(usr));
+        usr.flee();
 
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), 0);
         assertEq(usr.crops(), 0);
         assertEq(usr.gems(), 0);
-        if (join.live()) {
+        if (CropJoin(address(join)).live() == 1) {
             assertEq(masterchefDepositAmount(), join.total());
             assertEq(pair.balanceOf(address(join)), 0);
         } else {
@@ -336,8 +405,8 @@ contract SushiIntegrationTest is TestBase {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
         assertEq(join.stock(), pstock);
-        assertEq(join.share(), pshare);
-        assertEq(unclaimedAdapterRewards(), punclaimedRewards);
+        assertEqApproxBPS(join.share(), pshare, 1);
+        assertEqApprox(unclaimedAdapterRewards(), punclaimedRewards, 1);
         assertEq(usr.sushi(), psushi);
     }
     function doCage() public {
@@ -434,7 +503,7 @@ contract SushiIntegrationTest is TestBase {
     }
 
     function test_rewards1_fuzz(uint256 amount, uint256 blocks) public {
-        rewards1(amount % user1.getLPBalance(), blocks % 100000);
+        rewards1(amount % user1.getLPBalance(), blocks % 1000);
     }
 
     function test_rewards2_all() public {
@@ -442,7 +511,7 @@ contract SushiIntegrationTest is TestBase {
     }
 
     function test_rewards2_fuzz(uint256 amount1, uint256 amount2, uint256 blocks) public {
-        rewards2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), blocks % 100000);
+        rewards2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), blocks % 1000);
     }
 
     function test_prewards2_all() public {
@@ -450,7 +519,7 @@ contract SushiIntegrationTest is TestBase {
     }
 
     function test_prewards2_fuzz(uint256 amount1, uint256 amount2, uint256 blocks) public {
-        prewards2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), blocks % 100000);
+        prewards2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), blocks % 1000);
     }
 
     function test_multi2_all() public {
@@ -458,7 +527,7 @@ contract SushiIntegrationTest is TestBase {
     }
 
     function test_multi2_fuzz(uint256 amount1, uint256 amount2, uint256 wait1, uint256 wait2, uint256 wait3) public {
-        multi2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), wait1 % 100000, wait2 % 100000, wait3 % 100000);
+        multi2(amount1 % user1.getLPBalance(), amount2 % user2.getLPBalance(), wait1 % 1000, wait2 % 1000, wait3 % 1000);
     }
 
     function test_join_exit_preexisting() public {
@@ -474,9 +543,9 @@ contract SushiIntegrationTest is TestBase {
         hevm.roll(block.number + 100);
 
         // Each user should get half the rewards
-        user1.exit(address(user1), address(user1), bal1);
+        user1.exit(address(user1), bal1);
         assertTrue(sushi.balanceOf(address(join)) > 0);
-        user2.exit(address(user2), address(user2), bal2);
+        user2.exit(address(user2), bal2);
         assertTrue(sushi.balanceOf(address(join)) < 10);    // Join adapter should only be dusty
         assertTrue(sushi.balanceOf(address(user1)) > 0);
         assertEq(sushi.balanceOf(address(user1)), sushi.balanceOf(address(user2)));
@@ -488,16 +557,6 @@ contract SushiIntegrationTest is TestBase {
         doFlee(user1);
     }
 
-    function testFail_cant_steal_rewards() public {
-        uint256 amount = user1.getLPBalance();
-        doJoin(user1, amount);
-
-        hevm.roll(block.number + 100);
-
-        // user2 has no stake and so should not be able to take user1's rewards
-        user2.tack(address(user1), address(user2), amount);
-    }
-
     function test_auction_take_rewards() public {
         uint256 amount1 = user1.getLPBalance();
         uint256 amount2 = user2.getLPBalance();
@@ -507,17 +566,19 @@ contract SushiIntegrationTest is TestBase {
 
         // user2 takes user1's gems (via auction or something)
         user1.hope(address(this));
-        vat.flux(ilk, address(user1), address(user2), amount1);
+        user1.flux(address(user1), address(user2), amount1);
 
         // user2 should be able to take the rewards as well
-        user2.tack(address(user1), address(user2), amount1);
-        user2.exit(address(user2), address(user2), amount1);
+        user2.exit(address(user2), amount1);
 
         assertEq(user2.getLPBalance(), amount1 + amount2);
         assertTrue(user2.sushi() > 0);
     }
 
     function test_cage() public {
+        // Need admin access to cage
+        giveAuthAccess(address(join), address(this));
+
         uint256 amount1 = user1.getLPBalance();
         uint256 amount2 = user2.getLPBalance();
         doJoin(user1, amount1);
@@ -613,7 +674,6 @@ contract SushiIntegrationTest is TestBase {
     }
 
     function testFail_cage_no_auth() public {
-        join.deny(address(user1));
         user1.cage();
     }
 
@@ -624,106 +684,179 @@ contract SushiIntegrationTest is TestBase {
             bytes32(uint256(0)),
             bytes32(uint256(address(user2)))
         );
+        assertEq(masterchef.owner(), address(user2));
 
         // Anyone can cage
         user1.cage();
-        assertTrue(!join.live());
+        assertEq(CropJoin(address(join)).live(), 0);
     }
 
     function test_cage_migrator_changes() public {
         // Migrator is changed to some other contract
         hevm.store(
             address(masterchef),
-            bytes32(uint256(5)),
+            bytes32(uint256(2)),
             bytes32(uint256(address(user2)))
         );
+        assertEq(masterchef.migrator(), address(user2));
 
         // Anyone can cage
         user1.cage();
-        assertTrue(!join.live());
+        assertEq(CropJoin(address(join)).live(), 0);
     }
 
-    function test_cage_queued_change1() public {
-        // Set this contract as admin of the timelock
+    function test_cage_rewarder_changes() public {
+        // Migrator is changed to some other contract
         hevm.store(
-            address(timelock),
-            bytes32(uint256(0)),
-            bytes32(uint256(address(this)))
-        );
-
-        // Queue up a malicious transaction
-        timelock.queueTransaction(
             address(masterchef),
-            0,
-            "",
-            abi.encodeWithSelector(MasterChefLike.setMigrator.selector, [address(user2)]),
-            block.timestamp + timelock.delay()
+            bytes32(uint256(keccak256(abi.encode(5))) + join.pid()),
+            bytes32(uint256(address(user2)))
         );
+        assertEq(masterchef.rewarder(join.pid()), address(user2));
 
         // Anyone can cage
-        user1.cage(
-            0,
-            "",
-            abi.encodeWithSelector(MasterChefLike.setMigrator.selector, [address(user2)]),
-            block.timestamp + timelock.delay()
-        );
-        assertTrue(!join.live());
+        user1.cage();
+        assertEq(CropJoin(address(join)).live(), 0);
     }
 
-    function test_cage_queued_change2() public {
-        // Set this contract as admin of the timelock
-        hevm.store(
-            address(timelock),
-            bytes32(uint256(0)),
-            bytes32(uint256(address(this)))
-        );
+    function execute_dangerous_timelock_action(string memory signature, bytes memory data) internal {
+        uint256 t = block.timestamp + timelock.delay();
 
         // Queue up a malicious transaction
-        timelock.queueTransaction(
-            address(masterchef),
-            0,
-            "transferOwnership(address)",
-            abi.encode(address(user2)),
-            block.timestamp + timelock.delay()
-        );
+        timelock.queueTransaction(address(masterchef), 0, signature, data, t);
 
         // Anyone can cage
-        user1.cage(
-            0,
-            "transferOwnership(address)",
-            abi.encode(address(user2)),
-            block.timestamp + timelock.delay()
-        );
-        assertTrue(!join.live());
+        user1.cage(0, signature, data, t);
+        assertEq(CropJoin(address(join)).live(), 0);
+
+        // Execute the dangerous command
+        hevm.warp(t);
+        timelock.executeTransaction(address(masterchef), 0, signature, data, t);
     }
 
-    function testFail_cage_queued_irrelevant_change() public {
-        // Set this contract as admin of the timelock
-        hevm.store(
-            address(timelock),
-            bytes32(uint256(0)),
-            bytes32(uint256(address(this)))
-        );
+    function queue_safe_timelock_action(address target, string memory signature, bytes memory data, bool execute) internal {
+        uint256 t = block.timestamp + timelock.delay();
 
-        // Queue up a safe transaction such as adjusting the pool allocation amount
-        timelock.queueTransaction(
-            address(masterchef),
-            0,
-            "set(uint256,uint256,bool)",
-            abi.encode(join.pid(), uint256(0), false),
-            block.timestamp + timelock.delay()
-        );
+        // Queue up a safe transaction
+        timelock.queueTransaction(target, 0, signature, data, t);
 
-        // Should not be able to cage
-        user1.cage(
-            0,
-            "set(uint256,uint256,bool)",
-            abi.encode(join.pid(), uint256(0), false),
-            block.timestamp + timelock.delay()
-        );
+        // Cage should fail
+        try user1.cage(0, signature, data, t) {
+            assertTrue(false);
+        } catch {}
+        assertEq(CropJoin(address(join)).live(), 1);
+
+        if (execute) {
+            // Execute the safe command
+            hevm.warp(t);
+            timelock.executeTransaction(target, 0, signature, data, t);
+        }
+    }
+
+    // Test both variants of setMigrator() which is a very powerful operation - it can steal collateral
+    function test_cage_queued_dangerous_change_migrator1() public {
+        execute_dangerous_timelock_action("setMigrator(address)", abi.encode(address(user2)));
+        assertEq(masterchef.migrator(), address(user2));
+    }
+    function test_cage_queued_dangerous_change_migrator2() public {
+        execute_dangerous_timelock_action("", abi.encodeWithSelector(MasterChefLike.setMigrator.selector, address(user2)));
+        assertEq(masterchef.migrator(), address(user2));
+    }
+
+    // Test both variants of transferOwnership() which allows the owner to be changed to something other than the timelock
+    // All bets are off in that case for these cage() protections
+    function test_cage_queued_dangerous_change_owner1() public {
+        execute_dangerous_timelock_action("transferOwnership(address,bool,bool)", abi.encode(address(user2), true, false));
+        assertEq(masterchef.owner(), address(user2));
+    }
+    function test_cage_queued_dangerous_change_owner2() public {
+        execute_dangerous_timelock_action("", abi.encodeWithSelector(MasterChefLike.transferOwnership.selector, address(user2), true, false));
+        assertEq(masterchef.owner(), address(user2));
+    }
+
+    // Test both variants of set() where the rewarder changes (possible re-entrancy attack here)
+    function test_cage_queued_dangerous_change_rewarder1() public {
+        execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), true));
+        assertEq(masterchef.rewarder(join.pid()), address(user2));
+    }
+    function test_cage_queued_dangerous_change_rewarder2() public {
+        execute_dangerous_timelock_action("", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), true));
+        assertEq(masterchef.rewarder(join.pid()), address(user2));
+    }
+
+    // Test the safe case where the target is not the masterchef
+    function test_cage_queued_safe_change_diff_target() public {
+        queue_safe_timelock_action(address(user1), "setMigrator(address)", abi.encode(address(user2)), false);
+    }
+
+    // Test both variants of the safe case where the function being called on masterchef is not one considered dangerous
+    function test_cage_queued_safe_change_safe_function1() public {
+        queue_safe_timelock_action(address(masterchef), "add(uint256,address,address)", abi.encode(100, address(pair), address(user2)), true);
+    }
+    function test_cage_queued_safe_change_safe_function2() public {
+        queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.add.selector, 100, address(pair), address(user2)), true);
+    }
+
+    // Test both variants of the safe case where the set function has overwrite = false
+    function test_cage_queued_safe_change_safe_args1() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), false), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
+    }
+    function test_cage_queued_safe_change_safe_args2() public {
+        queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(user2), false), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
+    }
+
+    // Test both variants of the safe case where the set function is overwriting the rewarder, but it's the same address
+    function test_cage_queued_safe_change_safe_args3() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(rewarder), true), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
+    }
+    function test_cage_queued_safe_change_safe_args4() public {
+        queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid(), 100, address(rewarder), true), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
+    }
+
+    // Test both variants of the safe case where the set function where it's a different pool
+    function test_cage_queued_safe_change_safe_args5() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid() + 1, 100, address(user2), true), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
+    }
+    function test_cage_queued_safe_change_safe_args6() public {
+        queue_safe_timelock_action(address(masterchef), "", abi.encodeWithSelector(MasterChefLike.set.selector, join.pid() + 1, 100, address(user2), true), true);
+        assertEq(masterchef.rewarder(join.pid()), address(rewarder));
+    }
+
+    // Verify that we can't get around the hash comparison by providing unexpected bool values
+    // Want to test 0, 1, less than uint8 size with first bit set and unset, larger than uint8 size with first bit set and unset
+    function test_cage_queued_irregular_bool_values1() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 0), true);
+        assertTrue(masterchef.rewarder(join.pid()) != address(user2));
+    }
+    function test_cage_queued_irregular_bool_values2() public {
+        execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 1));
+        assertEq(masterchef.rewarder(join.pid()), address(user2));
+    }
+    function testFail_cage_queued_irregular_bool_values3() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 2), true);
+    }
+    function testFail_cage_queued_irregular_bool_values4() public {
+        execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 3));
+    }
+    function testFail_cage_queued_irregular_bool_values5() public {
+        queue_safe_timelock_action(address(masterchef), "set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 1024), true);
+    }
+    function testFail_cage_queued_irregular_bool_values6() public {
+        execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), 1025));
+    }
+    function testFail_cage_queued_irregular_bool_values7() public {
+        execute_dangerous_timelock_action("set(uint256,uint256,address,bool)", abi.encode(join.pid(), 100, address(user2), type(uint256).max));
     }
 
     function test_cage_false_positive() public {
+        // Need admin access to uncage
+        giveAuthAccess(address(join), address(this));
+
         doJoin(user1, user1.getLPBalance());
         hevm.warp(now + 1 days);
         doJoin(user2, user2.getLPBalance());
@@ -740,8 +873,8 @@ contract SushiIntegrationTest is TestBase {
         timelock.queueTransaction(
             address(masterchef),
             0,
-            "transferOwnership(address)",
-            abi.encode(address(timelock)),
+            "transferOwnership(address,bool,bool)",
+            abi.encode(address(timelock), true, false),
             block.timestamp + timelock.delay()
         );
 
@@ -750,11 +883,11 @@ contract SushiIntegrationTest is TestBase {
         assertEq(pair.balanceOf(address(join)), 0);
         user1.cage(
             0,
-            "transferOwnership(address)",
-            abi.encode(address(timelock)),
+            "transferOwnership(address,bool,bool)",
+            abi.encode(address(timelock), true, false),
             block.timestamp + timelock.delay()
         );
-        assertTrue(!join.live());
+        assertEq(CropJoin(address(join)).live(), 0);
         assertEq(pair.balanceOf(address(join)), join.total());
         assertEq(pair.balanceOf(address(masterchef)), tokensInMasterchef - join.total());
 
@@ -765,7 +898,7 @@ contract SushiIntegrationTest is TestBase {
 
         // Governance later decides to re-activate the adapter
         join.uncage();
-        assertTrue(join.live());
+        assertEq(CropJoin(address(join)).live(), 1);
         assertEq(pair.balanceOf(address(join)), 0);
         assertEq(pair.balanceOf(address(masterchef)), tokensInMasterchef);
 

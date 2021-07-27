@@ -30,26 +30,26 @@ interface MasterChefLike {
     function owner() external view returns (address);
     function emergencyWithdraw(uint256 _pid) external;
     function transferOwnership(address newOwner) external;
-    function setMigrator(uint256 _pid) external;
+    function setMigrator(address _migrator) external;
+    function add(uint256 _allocPoint, address _lpToken, bool _withUpdate) external;
 }
 
 interface TimelockLike {
     function queuedTransactions(bytes32) external view returns (bool);
     function queueTransaction(address,uint256,string memory,bytes memory,uint256) external;
+    function executeTransaction(address,uint256,string memory,bytes memory,uint256) payable external;
     function delay() external view returns (uint256);
+    function admin() external view returns (address);
 }
 
-contract SushiJoin is CropJoin {
+// SushiJoin for MasterChef V1
+contract SushiJoinImp is CropJoinImp {
     MasterChefLike  immutable public masterchef;
-    address                   public initialMigrator;
-    TimelockLike              public timelockOwner;
-    uint256                   public pid;
-    bool                      public live;
+    address         immutable public migrator;
+    TimelockLike    immutable public timelock;
+    uint256         immutable public pid;
 
     // --- Events ---
-    event Rely(address indexed usr);
-    event Deny(address indexed usr);
-    event File(bytes32 indexed what, uint256 data);
     event File(bytes32 indexed what, address data);
 
     /**
@@ -57,10 +57,10 @@ contract SushiJoin is CropJoin {
         @param ilk_                 Collateral type
         @param gem_                 The collateral LP token address
         @param bonus_               The SUSHI token contract address.
-        @param masterchef_          The SushiSwap MCV1 contract address.
+        @param masterchef_          The SushiSwap MCV2 contract address.
         @param pid_                 The index of the sushi pool.
-        @param initialMigrator_     The expected value of the migration contract.
-        @param timelockOwner_       The expected timelock owner address.
+        @param migrator_            The expected value of the migration field.
+        @param timelock_            The expected value of the owner field. Also needs to be an instance of Timelock.
     */
     constructor(
         address vat_,
@@ -69,49 +69,37 @@ contract SushiJoin is CropJoin {
         address bonus_,
         address masterchef_,
         uint256 pid_,
-        address initialMigrator_,
-        address timelockOwner_
+        address migrator_,
+        address timelock_
     )
         public
-        CropJoin(vat_, ilk_, gem_, bonus_)
+        CropJoinImp(vat_, ilk_, gem_, bonus_)
     {
         // Sanity checks
         (address lpToken, uint256 allocPoint,,) = MasterChefLike(masterchef_).poolInfo(pid_);
         require(lpToken == gem_, "SushiJoin/pid-does-not-match-gem");
         require(MasterChefLike(masterchef_).sushi() == bonus_, "SushiJoin/bonus-does-not-match-sushi");
         require(allocPoint > 0, "SushiJoin/pool-not-active");
-        require(MasterChefLike(masterchef_).migrator() == initialMigrator_, "SushiJoin/migrator-mismatch");
-        require(MasterChefLike(masterchef_).owner() == timelockOwner_, "SushiJoin/owner-mismatch");
+        require(MasterChefLike(masterchef_).migrator() == migrator_, "SushiJoin/migrator-mismatch");
+        require(MasterChefLike(masterchef_).owner() == timelock_, "SushiJoin/owner-mismatch");
 
         masterchef = MasterChefLike(masterchef_);
-        initialMigrator = initialMigrator_;
-        timelockOwner = TimelockLike(timelockOwner_);
+        migrator = migrator_;
+        timelock = TimelockLike(timelock_);
         pid = pid_;
-
-        ERC20(gem_).approve(masterchef_, uint256(-1));
-        live = true;
     }
 
-    // --- Administration ---
-    function file(bytes32 what, uint256 data) external auth {
-        if (what == "pid") pid = data;
-        else revert("SushiJoin/file-unrecognized-param");
-        emit File(what, data);
-    }
-    function file(bytes32 what, address data) external auth {
-        if (what == "initialMigrator") initialMigrator = data;
-        else if (what == "timelockOwner") timelockOwner = TimelockLike(data);
-        else revert("SushiJoin/file-unrecognized-param");
-        emit File(what, data);
+    function initApproval() public {
+        gem.approve(address(masterchef), type(uint256).max);
     }
 
     // Ignore gems that have been directly transferred
-    function nav() public override returns (uint256) {
+    function nav() public override view returns (uint256) {
         return total;
     }
 
     function crop() internal override returns (uint256) {
-        if (live) {
+        if (live == 1) {
             // withdraw of 0 will give us only the rewards
             masterchef.withdraw(pid, 0);
         }
@@ -119,39 +107,38 @@ contract SushiJoin is CropJoin {
     }
 
     function join(address urn, address usr, uint256 val) public override {
-        require(live, "SushiJoin/not-live");
         super.join(urn, usr, val);
         masterchef.deposit(pid, val);
     }
 
     function exit(address urn, address usr, uint256 val) public override {
-        if (live) {
+        if (live == 1) {
             masterchef.withdraw(pid, val);
         }
         super.exit(urn, usr, val);
     }
 
     function flee(address urn, address usr) public override {
-        if (live) {
-            uint256 val = vat.gem(ilk, msg.sender);
+        if (live == 1) {
+            uint256 val = vat.gem(ilk, urn);
             masterchef.withdraw(pid, val);
         }
         super.flee(urn, usr);
     }
-    function cage() external {
-        require(live, "SushiJoin/not-live");
+    function cage() override public {
+        require(live == 1, "SushiJoin/not-live");
 
         // Allow caging if any assumptions change
         require(
             wards[msg.sender] == 1 ||
-            masterchef.migrator() != initialMigrator ||
-            masterchef.owner() != address(timelockOwner)
+            masterchef.migrator() != migrator ||
+            masterchef.owner() != address(timelock)
         , "SushiJoin/not-authorized");
 
         _cage();
     }
-    function cage(uint256 value, string memory signature, bytes memory data, uint256 eta) external {
-        require(live, "SushiJoin/not-live");
+    function cage(uint256 value, string calldata signature, bytes calldata data, uint256 eta) external {
+        require(live == 1, "SushiJoin/not-live");
 
         // Verify the queued transaction is targetting one of the dangerous functions on Masterchef
         bytes memory callData;
@@ -172,16 +159,16 @@ contract SushiJoin is CropJoin {
             selector == MasterChefLike.setMigrator.selector
         , "SushiJoin/wrong-function");
         bytes32 txHash = keccak256(abi.encode(masterchef, value, signature, data, eta));
-        require(timelockOwner.queuedTransactions(txHash), "SushiJoin/invalid-hash");
+        require(timelock.queuedTransactions(txHash), "SushiJoin/invalid-hash");
 
         _cage();
     }
     function _cage() internal {
         masterchef.emergencyWithdraw(pid);
-        live = false;
+        live = 0;
     }
     function uncage() external auth {
         masterchef.deposit(pid, total);
-        live = true;
+        live = 1;
     }
 }
