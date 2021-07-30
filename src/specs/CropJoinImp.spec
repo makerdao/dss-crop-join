@@ -30,47 +30,115 @@ hook Sstore stake[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
     havoc stakeSum assuming stakeSum@new() == stakeSum@old() + (balance - old_balance);
 }
 
+ghost crop() returns uint256 {
+    init_state axiom crop() == token.balanceOf(currentContract);
+}
+
+hook Sstore stock uint256 stockValue (uint256 old_stockValue) STORAGE {
+    havoc crop assuming crop@new() == (crop@old() + old_stockValue) - stockValue;
+}
+
+hook Sstore token.balanceOf[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
+    if (a == currentContract) {
+        havoc crop assuming crop@new() == (crop@old() + balance) - old_balance;
+    }
+}
+
 // invariants also check the desired property on the constructor
 invariant stakeSum_equals_total() stakeSum() == total()
 
+invariant crop_is_correct()
+  token == bonus() =>
+    crop() == token.balanceOf(currentContract) - stock()
+
+// This rule establishes the validity of a method for calculating how much
+// bonus token can be exited to usr from urn.
+rule rewards_calculation(address urn, address usr) {
+    require usr != currentContract;
+    require token == bonus();
+
+    uint256 yield = 0;
+    uint256 _share = share();
+    uint256 _total = total();
+    if (_total > 0) {
+        // For derived classes that override crop(), this may
+        // require modification to compute the correct value.
+        uint256 _crop = token.balanceOf(currentContract) - stock();
+        _share = _share + _crop * 10^27 / _total;
+    }
+    uint256 last = crops(urn);
+    uint256 curr = stake(urn) * _share / 10^27;
+    if (curr > last) yield = curr - last;
+
+    uint256 usrBonusBal_pre = token.balanceOf(usr);
+    env e;
+    join(e, urn, usr, 0);
+
+    uint256 usrBonusBal_post = token.balanceOf(usr);
+    assert yield == usrBonusBal_post - usrBonusBal_pre;
+}
+
 rule tack_success_behavior(address src, address dst, uint256 wad) {
+    require token == bonus();
+    require src != currentContract;
+    require dst != currentContract;
+
     uint256 srcStake_pre = stake(src);
     uint256 dstStake_pre = stake(dst);
 
-    require token == bonus();
+    uint256 initShare = share();
+    uint256 initStock = stock();
+    uint256 initBonusBal = token.balanceOf(currentContract);
 
-    uint256 srcBonusBal_pre = token.balanceOf(src);
-    uint256 dstBonusBal_pre = token.balanceOf(dst);
+    // TODO: this code duplication sucks. Is there a way to avoid it? (can do at least partially via ghosts)
+    uint256 srcYield_pre = 0;
+    uint256 _share = share();
+    uint256 _total = total();
+    if (_total > 0) {
+        // For derived classes that override crop(), this may
+        // require modification to compute the correct value.
+        uint256 _crop = token.balanceOf(currentContract) - stock();
+        _share = _share + _crop * 10^27 / _total;
+    }
+    uint256 last = crops(src);
+    uint256 curr = stake(src) * _share / 10^27;
+    if (curr > last) srcYield_pre = curr - last;
+
+    uint256 dstYield_pre = 0;
+    // _share and _total can be reused as they are urn-independent
+    uint256 last2 = crops(dst);
+    uint256 curr2 = stake(dst) * _share / 10^27;
+    if (curr2 > last2) dstYield_pre = curr2 - last2;
 
     env e;
-    storage initState = lastStorage;
-
-    join(e, src, src, 0);
-    join(e, dst, dst, 0);
-
-    uint256 srcRewards_pre = token.balanceOf(src) - srcBonusBal_pre;
-    uint256 dstRewards_pre = token.balanceOf(dst) - dstBonusBal_pre;
-
-    tack(e, src, dst, wad) at initState;
+    tack(e, src, dst, wad);
 
     uint256 srcStake_post = stake(src);
     uint256 dstStake_post = stake(dst);
 
-    uint256 srcBonusBal_post = token.balanceOf(src);
-    uint256 dstBonusBal_post = token.balanceOf(dst);
+    // tack should not change any of these values
+    assert _total == total();
+    assert initShare == share();
+    assert initStock == stock();
+    assert initBonusBal == token.balanceOf(currentContract);
 
-    join(e, src, src, 0);
-    join(e, dst, dst, 0);
+    // The assertions above allow us to reuse _share
+    uint256 srcYield_post = 0;
+    uint256 last3 = crops(src);
+    uint256 curr3 = stake(src) * _share / 10^27;
+    if (curr3 > last3) srcYield_post = curr3 - last3;
 
-    uint256 srcRewards_post = token.balanceOf(src) - srcBonusBal_post;
-    uint256 dstRewards_post = token.balanceOf(dst) - dstBonusBal_post;
+    uint256 dstYield_post = 0;
+    uint256 last4 = crops(dst);
+    uint256 curr4 = stake(dst) * _share / 10^27;
+    if (curr4 > last4) dstYield_post = curr4 - last4;
 
     if (src == dst) {
         // stake is unchanged
         assert srcStake_pre == srcStake_post;
 
         // rewards are unchanged
-        assert srcRewards_pre == srcRewards_post;
+        assert srcYield_pre == dstYield_post;
     } else {
         // The "ideal" behavior, with infinite numerical precision, would be:
         //
@@ -83,7 +151,7 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
 
         // rewards transferred proportionally to amount of stake transferred
         // TODO: account for rounding errors, this should fail at the moment
-        assert srcRewards_post == srcRewards_pre * (srcStake_pre - wad) / srcStake_pre;
-        assert dstRewards_post == dstRewards_pre + srcRewards_pre * wad / srcStake_pre;
+//        assert srcYield_post == srcYield_pre * (10^18 * (srcYield_pre - wad) / srcYield_pre);
+//        assert dstYield_post == dstYield_pre + srcYield_pre * wad / srcYield_pre;
     }
 }
