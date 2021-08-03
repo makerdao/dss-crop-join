@@ -38,7 +38,7 @@ hook Sstore stock uint256 stockValue (uint256 old_stockValue) STORAGE {
     havoc crop assuming crop@new() == (crop@old() + old_stockValue) - stockValue;
 }
 
-hook Sstore token.balanceOf[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
+hook Sstore token.(slot 3)[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
     if (a == currentContract) {
         havoc crop assuming crop@new() == (crop@old() + balance) - old_balance;
     }
