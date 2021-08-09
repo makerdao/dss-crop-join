@@ -30,26 +30,38 @@ hook Sstore stake[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
     havoc stakeSum assuming stakeSum@new() == stakeSum@old() + (balance - old_balance);
 }
 
-ghost crop() returns uint256 {
-    init_state axiom crop() == token.balanceOf(currentContract);
-}
+ghost crop() returns uint256;
 
 hook Sstore stock uint256 stockValue (uint256 old_stockValue) STORAGE {
     havoc crop assuming crop@new() == (crop@old() + old_stockValue) - stockValue;
 }
 
 hook Sstore token.(slot 3)[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
-    if (a == currentContract) {
-        havoc crop assuming crop@new() == (crop@old() + balance) - old_balance;
-    }
+    havoc crop assuming (token == bonus()) && (a == currentContract => crop@new() == (crop@old() + balance) - old_balance) && (a != currentContract => crop@new() == crop@old());
 }
 
 // invariants also check the desired property on the constructor
 invariant stakeSum_equals_total() stakeSum() == total()
 
-invariant crop_is_correct()
-  token == bonus() =>
-    crop() == token.balanceOf(currentContract) - stock()
+rule crop_is_correct_init() {
+    env e;
+    calldataarg args;
+    require stock() == 0;
+    constructor(e, args);
+    require crop() == token.balanceOf(currentContract);
+    assert crop() == token.balanceOf(currentContract) - stock();
+}
+
+rule crop_is_correct_preserve(method f, env e, calldataarg args) filtered { f -> !f.isFallback } {
+    require token == bonus() => crop() == token.balanceOf(currentContract) - stock();
+    f(e, args);
+    assert token == bonus() => crop() == token.balanceOf(currentContract) - stock();
+}
+
+//rule fallback_always_reverts(method f, env e, calldataarg args) filtered { f -> f.isFallback } {
+//    f(e, args);
+//    assert lastReverted;
+//}
 
 // This rule establishes the validity of a method for calculating how much
 // bonus token can be exited to usr from urn.
