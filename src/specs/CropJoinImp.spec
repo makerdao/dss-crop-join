@@ -20,6 +20,8 @@ methods {
     flee(address, address)
     tack(address, address, uint256)
 
+    bonusToken.balanceOf(address) returns (uint256) envfree
+
     balanceOf(address) returns (uint256) => DISPATCHER(true)
     transfer(address,uint256) => DISPATCHER(true)
     transferFrom(address,address,uint256) => DISPATCHER(true)
@@ -53,14 +55,14 @@ rule crop_is_correct_init() {
     require bonus() == bonusToken;
     require stock() == 0;
     constructor(e, args);
-    require crop() == bonusToken.balanceOf(e, currentContract);
-    assert  crop() == bonusToken.balanceOf(e, currentContract) - stock();
+    require crop() == bonusToken.balanceOf(currentContract);
+    assert  crop() == bonusToken.balanceOf(currentContract) - stock();
 }
 
 rule crop_is_correct_preserve(method f, env e, calldataarg args) filtered { f -> !f.isFallback } {
-    require bonusToken == bonus() => crop() == bonusToken.balanceOf(e, currentContract) - stock();
+    require bonusToken == bonus() => crop() == bonusToken.balanceOf(currentContract) - stock();
     f(e, args);
-    assert bonusToken == bonus() => crop() == bonusToken.balanceOf(e, currentContract) - stock();
+    assert bonusToken == bonus() => crop() == bonusToken.balanceOf(currentContract) - stock();
 }
 
 //rule fallback_always_reverts(method f, env e, calldataarg args) filtered { f -> f.isFallback } {
@@ -71,8 +73,6 @@ rule crop_is_correct_preserve(method f, env e, calldataarg args) filtered { f ->
 // This rule establishes the validity of a method for calculating how much
 // bonus token can be exited to usr from urn.
 rule rewards_calculation(address urn, address usr) {
-    env e;
-
     require usr != currentContract;
     require bonusToken == bonus();
     require gem() != bonus();
@@ -83,23 +83,22 @@ rule rewards_calculation(address urn, address usr) {
     if (_total > 0) {
         // For derived classes that override crop(), this may
         // require modification to compute the correct value.
-        uint256 _crop = bonusToken.balanceOf(e, currentContract) - stock();
+        uint256 _crop = bonusToken.balanceOf(currentContract) - stock();
         _share = _share + _crop * 10^27 / _total;
     }
     uint256 last = crops(urn);
     uint256 curr = stake(urn) * _share / 10^27;
     if (curr > last) yield = curr - last;
 
-    uint256 usrBonusBal_pre = bonusToken.balanceOf(e, usr);
+    uint256 usrBonusBal_pre = bonusToken.balanceOf(usr);
+    env e;
     join(e, urn, usr, 0);
 
-    uint256 usrBonusBal_post = bonusToken.balanceOf(e, usr);
+    uint256 usrBonusBal_post = bonusToken.balanceOf(usr);
     assert yield == usrBonusBal_post - usrBonusBal_pre;
 }
 
 rule tack_success_behavior(address src, address dst, uint256 wad) {
-    env e;
-
     require bonusToken == bonus();
     require src != currentContract;
     require dst != currentContract;
@@ -109,7 +108,7 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
 
     uint256 initShare = share();
     uint256 initStock = stock();
-    uint256 initBonusBal = bonusToken.balanceOf(e, currentContract);
+    uint256 initBonusBal = bonusToken.balanceOf(currentContract);
 
     // TODO: this code duplication sucks. Is there a way to avoid it? (can do at least partially via ghosts)
     uint256 srcYield_pre = 0;
@@ -118,7 +117,7 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
     if (_total > 0) {
         // For derived classes that override crop(), this may
         // require modification to compute the correct value.
-        uint256 _crop = bonusToken.balanceOf(e, currentContract) - stock();
+        uint256 _crop = bonusToken.balanceOf(currentContract) - stock();
         _share = _share + _crop * 10^27 / _total;
     }
     uint256 last = crops(src);
@@ -131,6 +130,7 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
     uint256 curr2 = stake(dst) * _share / 10^27;
     if (curr2 > last2) dstYield_pre = curr2 - last2;
 
+    env e;
     tack(e, src, dst, wad);
 
     uint256 srcStake_post = stake(src);
@@ -140,7 +140,7 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
     assert _total == total();
     assert initShare == share();
     assert initStock == stock();
-    assert initBonusBal == bonusToken.balanceOf(e, currentContract);
+    assert initBonusBal == bonusToken.balanceOf(currentContract);
 
     // The assertions above allow us to reuse _share
     uint256 srcYield_post = 0;
