@@ -1,6 +1,6 @@
-// certoraRun ../CropJoin.sol:CropJoinImp ./DSToken.sol --link CropJoinImp:bonus=DSToken --verify CropJoinImp:CropJoinImp.spec --rule_sanity
+// certoraRun ../CropJoin.sol:CropJoinImp ./DSToken1.sol ./DSToken2.sol ./Vat.sol --link CropJoinImp:vat=Vat --verify CropJoinImp:CropJoinImp.spec --rule_sanity
 
-using DSToken as token
+using DSToken1 as bonusToken
 
 methods {
     vat() returns address envfree
@@ -19,7 +19,11 @@ methods {
     exit(address, address, uint256)
     flee(address, address)
     tack(address, address, uint256)
-    token.balanceOf(address) returns (uint256) envfree
+
+    balanceOf(address) returns (uint256) => DISPATCHER(true)
+    transfer(address,uint256) => DISPATCHER(true)
+    transferFrom(address,address,uint256) => DISPATCHER(true)
+    decimals() => DISPATCHER(true)
 }
 
 ghost stakeSum() returns uint256 {
@@ -36,8 +40,8 @@ hook Sstore stock uint256 stockValue (uint256 old_stockValue) STORAGE {
     havoc crop assuming crop@new() == (crop@old() + old_stockValue) - stockValue;
 }
 
-hook Sstore token.(slot 3)[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
-    havoc crop assuming (token == bonus()) && (a == currentContract => crop@new() == (crop@old() + balance) - old_balance) && (a != currentContract => crop@new() == crop@old());
+hook Sstore bonusToken.(slot 3)[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
+    havoc crop assuming (a == currentContract => crop@new() == (crop@old() + balance) - old_balance) && (a != currentContract => crop@new() == crop@old());
 }
 
 // invariants also check the desired property on the constructor
@@ -46,16 +50,17 @@ invariant stakeSum_equals_total() stakeSum() == total()
 rule crop_is_correct_init() {
     env e;
     calldataarg args;
+    require bonus() == bonusToken;
     require stock() == 0;
     constructor(e, args);
-    require crop() == token.balanceOf(currentContract);
-    assert crop() == token.balanceOf(currentContract) - stock();
+    require crop() == bonusToken.balanceOf(e, currentContract);
+    assert  crop() == bonusToken.balanceOf(e, currentContract) - stock();
 }
 
 rule crop_is_correct_preserve(method f, env e, calldataarg args) filtered { f -> !f.isFallback } {
-    require token == bonus() => crop() == token.balanceOf(currentContract) - stock();
+    require bonusToken == bonus() => crop() == bonusToken.balanceOf(e, currentContract) - stock();
     f(e, args);
-    assert token == bonus() => crop() == token.balanceOf(currentContract) - stock();
+    assert bonusToken == bonus() => crop() == bonusToken.balanceOf(e, currentContract) - stock();
 }
 
 //rule fallback_always_reverts(method f, env e, calldataarg args) filtered { f -> f.isFallback } {
@@ -66,8 +71,11 @@ rule crop_is_correct_preserve(method f, env e, calldataarg args) filtered { f ->
 // This rule establishes the validity of a method for calculating how much
 // bonus token can be exited to usr from urn.
 rule rewards_calculation(address urn, address usr) {
+    env e;
+
     require usr != currentContract;
-    require token == bonus();
+    require bonusToken == bonus();
+    require gem() != bonus();
 
     uint256 yield = 0;
     uint256 _share = share();
@@ -75,23 +83,24 @@ rule rewards_calculation(address urn, address usr) {
     if (_total > 0) {
         // For derived classes that override crop(), this may
         // require modification to compute the correct value.
-        uint256 _crop = token.balanceOf(currentContract) - stock();
+        uint256 _crop = bonusToken.balanceOf(e, currentContract) - stock();
         _share = _share + _crop * 10^27 / _total;
     }
     uint256 last = crops(urn);
     uint256 curr = stake(urn) * _share / 10^27;
     if (curr > last) yield = curr - last;
 
-    uint256 usrBonusBal_pre = token.balanceOf(usr);
-    env e;
+    uint256 usrBonusBal_pre = bonusToken.balanceOf(e, usr);
     join(e, urn, usr, 0);
 
-    uint256 usrBonusBal_post = token.balanceOf(usr);
+    uint256 usrBonusBal_post = bonusToken.balanceOf(e, usr);
     assert yield == usrBonusBal_post - usrBonusBal_pre;
 }
 
 rule tack_success_behavior(address src, address dst, uint256 wad) {
-    require token == bonus();
+    env e;
+
+    require bonusToken == bonus();
     require src != currentContract;
     require dst != currentContract;
 
@@ -100,7 +109,7 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
 
     uint256 initShare = share();
     uint256 initStock = stock();
-    uint256 initBonusBal = token.balanceOf(currentContract);
+    uint256 initBonusBal = bonusToken.balanceOf(e, currentContract);
 
     // TODO: this code duplication sucks. Is there a way to avoid it? (can do at least partially via ghosts)
     uint256 srcYield_pre = 0;
@@ -109,7 +118,7 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
     if (_total > 0) {
         // For derived classes that override crop(), this may
         // require modification to compute the correct value.
-        uint256 _crop = token.balanceOf(currentContract) - stock();
+        uint256 _crop = bonusToken.balanceOf(e, currentContract) - stock();
         _share = _share + _crop * 10^27 / _total;
     }
     uint256 last = crops(src);
@@ -122,7 +131,6 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
     uint256 curr2 = stake(dst) * _share / 10^27;
     if (curr2 > last2) dstYield_pre = curr2 - last2;
 
-    env e;
     tack(e, src, dst, wad);
 
     uint256 srcStake_post = stake(src);
@@ -132,7 +140,7 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
     assert _total == total();
     assert initShare == share();
     assert initStock == stock();
-    assert initBonusBal == token.balanceOf(currentContract);
+    assert initBonusBal == bonusToken.balanceOf(e, currentContract);
 
     // The assertions above allow us to reuse _share
     uint256 srcYield_post = 0;

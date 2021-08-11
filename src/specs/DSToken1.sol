@@ -184,7 +184,7 @@ contract DSMath {
     }
 }
 
-contract DSToken is DSMath, DSAuth {
+contract DSToken1 is DSMath, DSAuth {
     bool                                              public  stopped;
     uint256                                           public  totalSupply;
     mapping (address => uint256)                      public  balanceOf;
