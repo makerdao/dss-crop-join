@@ -31,17 +31,15 @@ methods {
 ghost stakeSum() returns uint256 {
     init_state axiom stakeSum() == 0;
 }
-
 hook Sstore stake[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
     havoc stakeSum assuming stakeSum@new() == stakeSum@old() + (balance - old_balance);
 }
 
+// For derived classes that override crop(), this may require modification to compute the correct value.
 ghost crop() returns uint256;
-
 hook Sstore stock uint256 stockValue (uint256 old_stockValue) STORAGE {
     havoc crop assuming crop@new() == (crop@old() + old_stockValue) - stockValue;
 }
-
 hook Sstore bonusToken.(slot 3)[KEY address a] uint256 balance (uint256 old_balance) STORAGE {
     havoc crop assuming (a == currentContract => crop@new() == (crop@old() + balance) - old_balance) && (a != currentContract => crop@new() == crop@old());
 }
@@ -62,7 +60,7 @@ rule crop_is_correct_init() {
 rule crop_is_correct_preserve(method f, env e, calldataarg args) filtered { f -> !f.isFallback } {
     require bonusToken == bonus() => crop() == bonusToken.balanceOf(currentContract) - stock();
     f(e, args);
-    assert bonusToken == bonus() => crop() == bonusToken.balanceOf(currentContract) - stock();
+    assert  bonusToken == bonus() => crop() == bonusToken.balanceOf(currentContract) - stock();
 }
 
 //rule fallback_always_reverts(method f, env e, calldataarg args) filtered { f -> f.isFallback } {
@@ -75,16 +73,13 @@ rule crop_is_correct_preserve(method f, env e, calldataarg args) filtered { f ->
 rule rewards_calculation(address urn, address usr) {
     require usr != currentContract;
     require bonusToken == bonus();
-    require gem() != bonus();
+    require crop() == bonusToken.balanceOf(currentContract) - stock();  // invariant when bonusToken == bonus()
 
     uint256 yield = 0;
     uint256 _share = share();
     uint256 _total = total();
     if (_total > 0) {
-        // For derived classes that override crop(), this may
-        // require modification to compute the correct value.
-        uint256 _crop = bonusToken.balanceOf(currentContract) - stock();
-        _share = _share + _crop * 10^27 / _total;
+        _share = _share + crop() * 10^27 / _total;
     }
     uint256 last = crops(urn);
     uint256 curr = stake(urn) * _share / 10^27;
@@ -100,6 +95,8 @@ rule rewards_calculation(address urn, address usr) {
 
 rule tack_success_behavior(address src, address dst, uint256 wad) {
     require bonusToken == bonus();
+    require crop() == bonusToken.balanceOf(currentContract) - stock();  // invariant when bonusToken == bonus()
+
     require src != currentContract;
     require dst != currentContract;
 
@@ -115,10 +112,7 @@ rule tack_success_behavior(address src, address dst, uint256 wad) {
     uint256 _share = share();
     uint256 _total = total();
     if (_total > 0) {
-        // For derived classes that override crop(), this may
-        // require modification to compute the correct value.
-        uint256 _crop = bonusToken.balanceOf(currentContract) - stock();
-        _share = _share + _crop * 10^27 / _total;
+        _share = _share + crop() * 10^27 / _total;
     }
     uint256 last = crops(src);
     uint256 curr = stake(src) * _share / 10^27;
