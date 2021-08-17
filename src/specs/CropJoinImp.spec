@@ -15,10 +15,6 @@ methods {
     stake(address) returns uint256 envfree
     nav() returns uint256 envfree
     nps() returns uint256 envfree
-    join(address, address, uint256)
-    exit(address, address, uint256)
-    flee(address, address)
-    tack(address, address, uint256)
 
     bonusToken.balanceOf(address) returns (uint256) envfree
 
