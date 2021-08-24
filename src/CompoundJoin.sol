@@ -53,7 +53,7 @@ interface CTokenLike is ERC20 {
     function borrow(uint256 borrowAmount) external returns (uint256);
     function repayBorrow(uint256 repayAmount) external returns (uint256);
     function repayBorrowBehalf(address borrower, uint256 repayAmount) external returns (uint256);
-    function liquidateBorrow(address borrower, uint256 repayAmount, CToken cTokenCollateral) external returns (uint256);
+    function liquidateBorrow(address borrower, uint256 repayAmount, CTokenLike cTokenCollateral) external returns (uint256);
 }
 
 interface ComptrollerLike {
@@ -72,20 +72,7 @@ interface ComptrollerLike {
     function markets(address) external returns (bool,uint256,bool);
 }
 
-interface Strategy {
-    function nav() external returns (uint256);
-    function harvest() external;
-    function join(uint256) external;
-    function exit(uint256) external;
-    // temporary
-    function wind(uint256,uint256,uint256) external;
-    function unwind(uint256,uint256,uint256,uint256) external;
-    function cgem() external returns (address);
-    function maxf() external returns (uint256);
-    function minf() external returns (uint256);
-}
-
-contract CompoundJoin is CropJoin {
+contract CompoundJoinImp is CropJoinImp {
     CTokenLike      immutable public cgem;
     ComptrollerLike           public comptroller;
     uint256                   public minf = 0;  // minimum target collateral factor [wad]
@@ -113,14 +100,14 @@ contract CompoundJoin is CropJoin {
         address comptroller_
     )
         public
-        CropJoin(vat_, ilk_, gem_, comp_)
+        CropJoinImp(vat_, ilk_, gem_, comp_)
     {
         // Sanity checks
-        require(CToken(cgem_).comptroller() == comptroller_, "CompoundJoin/comptroller-mismatch");
-        require(CToken(cgem_).underlying() == gem_, "CompoundJoin/underlying-mismatch");
+        require(CTokenLike(cgem_).comptroller() == comptroller_, "CompoundJoin/comptroller-mismatch");
+        require(CTokenLike(cgem_).underlying() == gem_, "CompoundJoin/underlying-mismatch");
 
-        cgem = CToken(cgem_);
-        comptroller = CToken(comptroller_);
+        cgem = CTokenLike(cgem_);
+        comptroller = ComptrollerLike(comptroller_);
 
         ERC20(gem_).approve(cgem_, type(uint256).max);
 
@@ -132,24 +119,8 @@ contract CompoundJoin is CropJoin {
     }
 
     // --- Math ---
-    function add(uint256 x, uint256 y) public pure returns (uint256 z) {
-        require((z = x + y) >= x, "ds-math-add-overflow");
-    }
-    function sub(uint256 x, uint256 y) public pure returns (uint256 z) {
-        require((z = x - y) <= x, "ds-math-sub-underflow");
-    }
-    function zsub(uint256 x, uint256 y) public pure returns (uint256 z) {
+    function zsub(uint256 x, uint256 y) internal pure returns (uint256 z) {
         return sub(x, min(x, y));
-    }
-    function mul(uint256 x, uint256 y) public pure returns (uint256 z) {
-        require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
-    }
-    uint256 constant WAD  = 10 ** 18;
-    function wmul(uint256 x, uint256 y) public pure returns (uint256 z) {
-        z = mul(x, y) / WAD;
-    }
-    function wdiv(uint256 x, uint256 y) public pure returns (uint256 z) {
-        z = mul(x, WAD) / y;
     }
     function min(uint256 x, uint256 y) internal pure returns (uint256 z) {
         return x <= y ? x : y;
@@ -195,7 +166,7 @@ contract CompoundJoin is CropJoin {
 
     function join(address urn, address usr, uint256 val) public override {
         super.join(urn, usr, val);
-        require(cgem.mint(gems) == 0);
+        require(cgem.mint(val) == 0);
     }
 
     function exit(address urn, address usr, uint256 val) public override {
@@ -280,7 +251,7 @@ contract CompoundJoin is CropJoin {
             //   - [insufficient loan for exit]
             //   - [bad configuration]
             uint256 x1 = wdiv(sub(wmul(s, cf), b), cf);
-            uint256 x2 = wdiv(this.zsub(add(b, wmul(exit_, maxf)),
+            uint256 x2 = wdiv(zsub(add(b, wmul(exit_, maxf)),
                                wmul(sub(s, loan_), maxf)),
                            sub(1e18, maxf));
             uint256 max_repay = min(x1, x2);
@@ -298,9 +269,9 @@ contract CompoundJoin is CropJoin {
         if (loan_ > 0) {
             require(gem.transfer(msg.sender, loan_), "failed-transfer");
         }
-        if (exit_ > 0) {
-            exit(exit_);
-        }
+        //if (exit_ > 0) {
+        //    exit(exit_);
+        //}
 
         uint256 nb = cgem.balanceOfUnderlying(address(this));
         uint256 u_ = nb > 0 ? wdiv(cgem.borrowBalanceStored(address(this)), nb) : 0;

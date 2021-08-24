@@ -17,7 +17,7 @@
 pragma solidity 0.6.12;
 
 import "./TestBase.sol";
-import {CompoundJoin,ERC20,CToken,Comptroller,Strategy,CompStrat} from "../CompoundJoin.sol";
+import {CompoundJoinImp,ERC20,CTokenLike,ComptrollerLike,CropJoin} from "../CompoundJoin.sol";
 import {CropManager,CropManagerImp} from "../CropManager.sol";
 
 interface VatLike {
@@ -42,11 +42,11 @@ contract Usr {
 
     Hevm hevm;
     VatLike vat;
-    CompoundJoin adapter;
+    CompoundJoinImp adapter;
     CropManagerImp manager;
     ERC20 gem;
 
-    constructor(Hevm hevm_, CompoundJoin join_, CropManagerImp manager_, ERC20 gem_) public {
+    constructor(Hevm hevm_, CompoundJoinImp join_, CropManagerImp manager_, ERC20 gem_) public {
         hevm = hevm_;
         adapter = join_;
         manager = manager_;
@@ -72,7 +72,7 @@ contract Usr {
         manager.exit(address(adapter), address(this), wad);
     }
     function proxy() public view returns (address) {
-        return CropManager(address(manager)).proxy(address(this));
+        return manager.proxy(address(this));
     }
     function crops() public view returns (uint256) {
         return adapter.crops(proxy());
@@ -176,13 +176,12 @@ contract Troll {
 contract CompoundIntegrationTest is TestBase {
 
     Token usdc;
-    CToken cusdc;
+    CTokenLike cusdc;
     Token comp;
     Troll troll;
     VatLike vat;
-    CompoundJoin adapter;
+    CompoundJoinImp adapter;
     CropManagerImp manager;
-    CompStrat strategy;
     address self;
     bytes32 ilk = "USDC-C";
 
@@ -191,33 +190,31 @@ contract CompoundIntegrationTest is TestBase {
 
         vat = VatLike(0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B);
         usdc = Token(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
-        cusdc = CToken(0x39AA39c021dfbaE8faC545936693aC917d5E7563);
+        cusdc = CTokenLike(0x39AA39c021dfbaE8faC545936693aC917d5E7563);
         comp = Token(0xc00e94Cb662C3520282E6f5717214004A7f26888);
         troll = Troll(0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B);
 
         // Give this contract admin access on the vat
         giveAuthAccess(address(vat), address(this));
 
-        strategy = new CompStrat( address(usdc)
-                                , address(cusdc)
-                                , address(comp)
-                                , address(troll)
-                                , 10 ** usdc.decimals()
-                                );
-        adapter = new CompoundJoin( address(vat)
-                              , ilk
-                              , address(usdc)
-                              , address(comp)
-                              , address(strategy)
-                              );
+        CropJoin baseJoin = new CropJoin();
+        baseJoin.setImplementation(address(new CompoundJoinImp(
+            address(vat),
+            ilk,
+            address(usdc),
+            address(comp),
+            address(cusdc),
+            address(troll)
+        )));
+        adapter = CompoundJoinImp(address(baseJoin));
         CropManager base = new CropManager();
         base.setImplementation(address(new CropManagerImp(address(vat))));
         manager = CropManagerImp(address(base));
-        adapter.rely(address(manager));
-        adapter.deny(address(this));    // Only access should be through manager
+        CropJoin(address(adapter)).rely(address(manager));
+        CropJoin(address(adapter)).deny(address(this));    // Only access should be through manager
         vat.rely(address(adapter));
-        strategy.rely(address(adapter));
-        strategy.tune(0.675e18, 0.674e18);
+        adapter.file("minf", 0.674e18);
+        adapter.file("maxf", 0.675e18);
 
         // give ourselves some usdc
         giveTokens(address(usdc), 1000 * 1e6);
@@ -225,7 +222,6 @@ contract CompoundIntegrationTest is TestBase {
         hevm.roll(block.number + 10);
 
         usdc.approve(address(manager), uint(-1));
-        usdc.approve(address(strategy), uint(-1));
     }
 
 
@@ -250,12 +246,12 @@ contract CompoundIntegrationTest is TestBase {
     function can_wind(uint borrow, uint n, uint loan) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
             ("wind(uint256,uint256,uint256)", borrow, n, loan);
-        return can_call(address(strategy), call);
+        return can_call(address(adapter), call);
     }
     function can_unwind(uint repay, uint n, uint exit_, uint loan_) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
             ("unwind(uint256,uint256,uint256,uint256)", repay, n, exit_, loan_);
-        return can_call(address(strategy), call);
+        return can_call(address(adapter), call);
     }
     function can_unwind_exit(uint val) public returns (bool) {
         return can_unwind_exit(val, 0);
@@ -268,21 +264,21 @@ contract CompoundIntegrationTest is TestBase {
     }
 
     function get_s() internal returns (uint256 cf) {
-        require(CToken(address(cusdc)).accrueInterest() == 0);
-        return CToken(address(cusdc)).balanceOfUnderlying(address(strategy));
+        require(CTokenLike(address(cusdc)).accrueInterest() == 0);
+        return CTokenLike(address(cusdc)).balanceOfUnderlying(address(adapter));
     }
     function get_b() internal returns (uint256 cf) {
-        require(CToken(address(cusdc)).accrueInterest() == 0);
-        return CToken(address(cusdc)).borrowBalanceStored(address(strategy));
+        require(CTokenLike(address(cusdc)).accrueInterest() == 0);
+        return CTokenLike(address(cusdc)).borrowBalanceStored(address(adapter));
     }
     function get_cf() internal returns (uint256 cf) {
-        require(CToken(address(cusdc)).accrueInterest() == 0);
-        cf = wdiv(CToken(address(cusdc)).borrowBalanceStored(address(strategy)),
-                  CToken(address(cusdc)).balanceOfUnderlying(address(strategy)));
+        require(CTokenLike(address(cusdc)).accrueInterest() == 0);
+        cf = wdiv(CTokenLike(address(cusdc)).borrowBalanceStored(address(adapter)),
+                  CTokenLike(address(cusdc)).balanceOfUnderlying(address(adapter)));
     }
 
     function test_underlying() public {
-        assertEq(CToken(address(cusdc)).underlying(), address(usdc));
+        assertEq(CTokenLike(address(cusdc)).underlying(), address(usdc));
     }
 
     function reward(uint256 tic) internal {
@@ -300,7 +296,7 @@ contract CompoundIntegrationTest is TestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        strategy.wind(0, 0, 0);
+        adapter.wind(0, 0, 0);
 
         reward(1 days);
 
@@ -315,15 +311,15 @@ contract CompoundIntegrationTest is TestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        strategy.wind(50 * 10**6, 0, 0);
+        adapter.wind(50 * 10**6, 0, 0);
 
         reward(1 days);
 
         a.join(0);
         assertGt(comp.balanceOf(address(a)), 0 ether);
 
-        assertLt(get_cf(), strategy.maxf());
-        assertLt(get_cf(), strategy.minf());
+        assertLt(get_cf(), adapter.maxf());
+        assertLt(get_cf(), adapter.minf());
     }
 
     function test_reward_wound_fully() public {
@@ -333,43 +329,43 @@ contract CompoundIntegrationTest is TestBase {
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        strategy.wind(0, 5, 0);
+        adapter.wind(0, 5, 0);
 
         reward(1 days);
 
         a.join(0);
         assertGt(comp.balanceOf(address(a)), 0 ether);
 
-        assertLt(get_cf(), strategy.maxf(), "cf < maxf");
-        assertGt(get_cf(), strategy.minf(), "cf > minf");
+        assertLt(get_cf(), adapter.maxf(), "cf < maxf");
+        assertGt(get_cf(), adapter.minf(), "cf > minf");
     }
 
     function test_wind_unwind() public {
-        require(CToken(address(cusdc)).accrueInterest() == 0);
+        require(CTokenLike(address(cusdc)).accrueInterest() == 0);
         (Usr a,) = init_user();
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
         a.join(100 * 1e6);
         assertEq(comp.balanceOf(address(a)), 0 ether);
 
-        strategy.wind(0, 5, 0);
+        adapter.wind(0, 5, 0);
 
         reward(1 days);
 
-        assertLt(get_cf(), strategy.maxf(), "under target");
-        assertGt(get_cf(), strategy.minf(), "over minimum");
+        assertLt(get_cf(), adapter.maxf(), "under target");
+        assertGt(get_cf(), adapter.minf(), "over minimum");
 
         log_named_uint("cf", get_cf());
         reward(1000 days);
         log_named_uint("cf", get_cf());
 
-        assertGt(get_cf(), strategy.maxf(), "over target after interest");
+        assertGt(get_cf(), adapter.maxf(), "over target after interest");
 
         // unwind is used for deleveraging our position. Here we have
         // gone over the target due to accumulated interest, so we
         // unwind to bring us back under the target leverage.
         assertTrue( can_unwind(0, 1), "able to unwind if over target");
-        strategy.unwind(0, 1, 0, 0);
+        adapter.unwind(0, 1, 0, 0);
 
         assertLt(get_cf(), 0.676e18, "near target post unwind");
         assertGt(get_cf(), 0.674e18, "over minimum post unwind");
@@ -377,22 +373,22 @@ contract CompoundIntegrationTest is TestBase {
 
     function test_unwind_multiple() public {
         manager.join(address(adapter), address(this), 100e6);
-        strategy.wind(0, 5, 0);
+        adapter.wind(0, 5, 0);
 
         set_cf(0.72e18);
-        strategy.unwind(0, 1, 0, 0);
+        adapter.unwind(0, 1, 0, 0);
         log_named_uint("cf", get_cf());
-        strategy.unwind(0, 1, 0, 0);
+        adapter.unwind(0, 1, 0, 0);
         log_named_uint("cf", get_cf());
-        strategy.unwind(0, 1, 0, 0);
+        adapter.unwind(0, 1, 0, 0);
         log_named_uint("cf", get_cf());
-        strategy.unwind(0, 1, 0, 0);
+        adapter.unwind(0, 1, 0, 0);
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.674e18);
         assertLt(get_cf(), 0.675e18);
 
         set_cf(0.72e18);
-        strategy.unwind(0, 8, 0, 0);
+        adapter.unwind(0, 8, 0, 0);
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.674e18);
         assertLt(get_cf(), 0.675e18);
@@ -404,7 +400,7 @@ contract CompoundIntegrationTest is TestBase {
         // we need a loan of
         //   L / s0 >= (u - cf) / (cf * (1 - u) * (1 - cf))
         manager.join(address(adapter), address(this), 100e6);
-        strategy.wind(0, 5, 0);
+        adapter.wind(0, 5, 0);
         set_cf(0.77e18);
         log_named_uint("cf", get_cf());
 
@@ -422,7 +418,7 @@ contract CompoundIntegrationTest is TestBase {
 
     function test_unwind_under_limit() public {
         manager.join(address(adapter), address(this), 100e6);
-        strategy.wind(0, 5, 0);
+        adapter.wind(0, 5, 0);
         set_cf(0.673e18);
         log_named_uint("cf", get_cf());
         assertTrue(!can_unwind(0, 1, 0, 0));
@@ -455,7 +451,7 @@ contract CompoundIntegrationTest is TestBase {
         assertTrue(!can_wind(207.69 * 1e6, 0, 176 * 1e6), "insufficient loan");
         assertTrue( can_wind(207.69 * 1e6, 0, 177 * 1e6), "sufficient loan");
 
-        strategy.wind(207.69 * 1e6, 0, 177 * 1e6);
+        adapter.wind(207.69 * 1e6, 0, 177 * 1e6);
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.674e18);
         assertLt(get_cf(), 0.675e18);
@@ -467,7 +463,7 @@ contract CompoundIntegrationTest is TestBase {
         a.giveTokens(ERC20(address(usdc)), 900e6);
 
         a.join(100 * 1e6);
-        strategy.wind(0, 1, 200 * 1e6);
+        adapter.wind(0, 1, 200 * 1e6);
         log_named_uint("cf", get_cf());
         assertGt(get_cf(), 0.673e18);
         assertLt(get_cf(), 0.675e18);
@@ -475,27 +471,27 @@ contract CompoundIntegrationTest is TestBase {
         return;
         a.join(100 * 1e6);
         logs("200");
-        strategy.wind(0, 1, 200 * 1e6);
+        adapter.wind(0, 1, 200 * 1e6);
         log_named_uint("cf", get_cf());
 
         a.join(100 * 1e6);
         logs("100");
-        strategy.wind(0, 1, 100 * 1e6);
+        adapter.wind(0, 1, 100 * 1e6);
         log_named_uint("cf", get_cf());
 
         a.join(100 * 1e6);
         logs("100");
-        strategy.wind(0, 1, 100 * 1e6);
+        adapter.wind(0, 1, 100 * 1e6);
         log_named_uint("cf", get_cf());
 
         a.join(100 * 1e6);
         logs("150");
-        strategy.wind(0, 1, 150 * 1e6);
+        adapter.wind(0, 1, 150 * 1e6);
         log_named_uint("cf", get_cf());
 
         a.join(100 * 1e6);
         logs("175");
-        strategy.wind(0, 1, 175 * 1e6);
+        adapter.wind(0, 1, 175 * 1e6);
         log_named_uint("cf", get_cf());
 
         assertGt(get_cf(), 0.673e18);
@@ -507,7 +503,7 @@ contract CompoundIntegrationTest is TestBase {
 
         a.join(100 * 1e6);
         uint256 gas_before = gasleft();
-        strategy.wind(0, 1, 200 * 1e6);
+        adapter.wind(0, 1, 200 * 1e6);
         uint256 gas_after = gasleft();
         log_named_uint("s ", get_s());
         log_named_uint("b ", get_b());
@@ -522,7 +518,7 @@ contract CompoundIntegrationTest is TestBase {
 
         a.join(100 * 1e6);
         uint256 gas_before = gasleft();
-        strategy.wind(0, 5, 0);
+        adapter.wind(0, 5, 0);
         uint256 gas_after = gasleft();
 
         assertGt(get_cf(), 0.673e18);
@@ -538,7 +534,7 @@ contract CompoundIntegrationTest is TestBase {
 
         a.join(100 * 1e6);
         uint256 gas_before = gasleft();
-        strategy.wind(0, 3, 50e6);
+        adapter.wind(0, 3, 50e6);
         uint256 gas_after = gasleft();
 
         assertGt(get_cf(), 0.673e18);
@@ -563,23 +559,23 @@ contract CompoundIntegrationTest is TestBase {
         log_named_uint("new b", b);
         log_named_uint("set u", cf);
 
-        //set_usdc(address(strategy), 0);
+        //set_usdc(address(adapter), 0);
         // cusdc.accountTokens
         hevm.store(
             address(cusdc),
-            keccak256(abi.encode(address(strategy), uint256(15))),
+            keccak256(abi.encode(address(adapter), uint256(15))),
             bytes32((s * 1e18) / x)
         );
         // cusdc.accountBorrows.principal
         hevm.store(
             address(cusdc),
-            keccak256(abi.encode(address(strategy), uint256(17))),
+            keccak256(abi.encode(address(adapter), uint256(17))),
             bytes32(b)
         );
         // cusdc.accountBorrows.interestIndex
         hevm.store(
             address(cusdc),
-            bytes32(uint(keccak256(abi.encode(address(strategy), uint256(17)))) + 1),
+            bytes32(uint(keccak256(abi.encode(address(adapter), uint256(17)))) + 1),
             bytes32(cusdc.borrowIndex())
         );
 
@@ -591,24 +587,25 @@ contract CompoundIntegrationTest is TestBase {
     // and then seek to withdraw all of the collateral
     function test_cage_single_user() public {
         manager.join(address(adapter), address(this), 100 * 1e6);
-        strategy.wind(0, 5, 0);
+        adapter.wind(0, 5, 0);
         set_cf(0.6745e18);
 
         // log("unwind 1");
-        // strategy.unwind(0, 6, 0, 0);
+        // adapter.unwind(0, 6, 0, 0);
 
         set_cf(0.675e18);
 
         // this causes a sub overflow unless we use zsub
-        // strategy.tune(0.673e18, 0);
+        // adapter.tune(0.673e18, 0);
 
-        strategy.tune(0, 0);
+        adapter.file("minf", 0);
+        adapter.file("maxf", 0);
 
         assertEq(usdc.balanceOf(address(this)),  900 * 1e6);
-        strategy.unwind(0, 6, 100 * 1e6, 0);
+        adapter.unwind(0, 6, 100 * 1e6, 0);
         assertEq(usdc.balanceOf(address(this)), 1000 * 1e6);
     }
-    // test of `cage` with two users, where the strategy is unwound
+    // test of `cage` with two users, where the adapter is unwound
     // by a third party and the two users then exit separately
     function test_cage_multi_user() public {
         cage_multi_user(60 * 1e6, 40 * 1e6, 200 * 1e6);
@@ -648,12 +645,13 @@ contract CompoundIntegrationTest is TestBase {
         assertEq(usdc.balanceOf(address(a)), cash - a_join);
         assertEq(usdc.balanceOf(address(b)), cash - b_join);
 
-        strategy.wind(0, 1, 0);
+        adapter.wind(0, 1, 0);
         reward(30 days);
-        strategy.tune(0, 0);
+        adapter.file("minf", 0);
+        adapter.file("maxf", 0);
 
-        strategy.unwind(0, 10, 0, 0);
-        assertEq(cusdc.balanceOfUnderlying(address(strategy)), 0);
+        adapter.unwind(0, 10, 0, 0);
+        assertEq(cusdc.balanceOfUnderlying(address(adapter)), 0);
 
         a.exit(a_join);
         b.exit(b_join);
@@ -671,8 +669,8 @@ contract CompoundIntegrationTest is TestBase {
 
         set_cf(0.675e18);
 
-        assertTrue(get_cf() < strategy.maxf(), "cf under target");
-        assertTrue(get_cf() > strategy.minf(), "cf over minimum");
+        assertTrue(get_cf() < adapter.maxf(), "cf under target");
+        assertTrue(get_cf() > adapter.minf(), "cf over minimum");
 
         // we can't exit as there is no available usdc
         assertTrue(!can_exit(10 * 1e6), "cannot 10% exit initially");
@@ -686,29 +684,29 @@ contract CompoundIntegrationTest is TestBase {
             assertTrue( can_unwind_exit(19.5 * 1e6, 10 * 1e6), "ok loan exit");
             assertTrue(!can_unwind_exit(19.7 * 1e6, 10 * 1e6), "no loan exit");
 
-            log_named_uint("s ", CToken(address(cusdc)).balanceOfUnderlying(address(strategy)));
-            log_named_uint("b ", CToken(address(cusdc)).borrowBalanceStored(address(strategy)));
+            log_named_uint("s ", CTokenLike(address(cusdc)).balanceOfUnderlying(address(adapter)));
+            log_named_uint("b ", CTokenLike(address(cusdc)).borrowBalanceStored(address(adapter)));
             log_named_uint("u ", get_cf());
 
             uint prev = usdc.balanceOf(address(this));
             //adapter.unwind(0, 1, 10 * 1e6,  10 * 1e6);
             assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
 
-            log_named_uint("s'", CToken(address(cusdc)).balanceOfUnderlying(address(strategy)));
-            log_named_uint("b'", CToken(address(cusdc)).borrowBalanceStored(address(strategy)));
+            log_named_uint("s'", CTokenLike(address(cusdc)).balanceOfUnderlying(address(adapter)));
+            log_named_uint("b'", CTokenLike(address(cusdc)).borrowBalanceStored(address(adapter)));
             log_named_uint("u'", get_cf());
 
         } else {
-            log_named_uint("s ", CToken(address(cusdc)).balanceOfUnderlying(address(strategy)));
-            log_named_uint("b ", CToken(address(cusdc)).borrowBalanceStored(address(strategy)));
+            log_named_uint("s ", CTokenLike(address(cusdc)).balanceOfUnderlying(address(adapter)));
+            log_named_uint("b ", CTokenLike(address(cusdc)).borrowBalanceStored(address(adapter)));
             log_named_uint("u ", get_cf());
 
             uint prev = usdc.balanceOf(address(this));
             //adapter.unwind(0, 1, 10 * 1e6, 0);
             assertEq(usdc.balanceOf(address(this)) - prev, 10 * 1e6);
 
-            log_named_uint("s'", CToken(address(cusdc)).balanceOfUnderlying(address(strategy)));
-            log_named_uint("b'", CToken(address(cusdc)).borrowBalanceStored(address(strategy)));
+            log_named_uint("s'", CTokenLike(address(cusdc)).balanceOfUnderlying(address(adapter)));
+            log_named_uint("b'", CTokenLike(address(cusdc)).borrowBalanceStored(address(adapter)));
             log_named_uint("u'", get_cf());
         }
     }
@@ -735,7 +733,7 @@ contract CompoundIntegrationTest is TestBase {
         manager.join(address(adapter), address(this), 100 * 1e6);
         set_cf(0.675e18);
         uint gas_before = gasleft();
-        strategy.unwind(0, 1, 100e6 - 1e4, 177e6);
+        adapter.unwind(0, 1, 100e6 - 1e4, 177e6);
         uint gas_after = gasleft();
 
         assertGt(get_cf(), 0.674e18);
@@ -750,7 +748,7 @@ contract CompoundIntegrationTest is TestBase {
         manager.join(address(adapter), address(this), 100 * 1e6);
         set_cf(0.675e18);
         uint gas_before = gasleft();
-        strategy.unwind(0, 5, 100e6 - 1e4, 0);
+        adapter.unwind(0, 5, 100e6 - 1e4, 0);
         uint gas_after = gasleft();
 
         assertGt(get_cf(), 0.674e18);
@@ -767,7 +765,7 @@ contract CompoundIntegrationTest is TestBase {
         manager.join(address(adapter), address(this), 100 * 1e6);
         set_cf(0.675e18);
         uint gas_before = gasleft();
-        strategy.unwind(0, 1, 14e6, 0);
+        adapter.unwind(0, 1, 14e6, 0);
         uint gas_after = gasleft();
 
         assertGt(get_cf(), 0.674e18);
@@ -782,7 +780,7 @@ contract CompoundIntegrationTest is TestBase {
     // The nav of the adapter will drop over time, due to interest
     // accrual, check that this is well behaved.
     function test_nav_drop_with_interest() public {
-        require(CToken(address(cusdc)).accrueInterest() == 0);
+        require(CTokenLike(address(cusdc)).accrueInterest() == 0);
         (Usr a,) = init_user();
 
         manager.join(address(adapter), address(this), 600 * 1e6);
@@ -793,7 +791,7 @@ contract CompoundIntegrationTest is TestBase {
         assertEq(adapter.nps(), 1 ether, "initial nps is 1");
 
         log_named_uint("nps before wind   ", adapter.nps());
-        strategy.wind(0, 5, 0);
+        adapter.wind(0, 5, 0);
 
         assertGt(get_cf(), 0.673e18, "near minimum");
         assertLt(get_cf(), 0.675e18, "under target");
@@ -811,7 +809,7 @@ contract CompoundIntegrationTest is TestBase {
         log_named_uint("max usdc    ", max_usdc);
         log_named_uint("adapter.balance", adapter.stake(address(a)));
         log_named_uint("vat.gem     ", vat.gem(adapter.ilk(), address(a)));
-        log_named_uint("usdc        ", usdc.balanceOf(address(strategy)));
+        log_named_uint("usdc        ", usdc.balanceOf(address(adapter)));
         log_named_uint("cf", get_cf());
         logs("exit ===");
         //a.unwind_exit(max_usdc);
@@ -819,7 +817,7 @@ contract CompoundIntegrationTest is TestBase {
         log_named_uint("adapter.balance", adapter.stake(address(a)));
         log_named_uint("adapter.balance", adapter.stake(address(a)) / 1e12);
         log_named_uint("vat.gem     ", vat.gem(adapter.ilk(), address(a)));
-        log_named_uint("usdc        ", usdc.balanceOf(address(strategy)));
+        log_named_uint("usdc        ", usdc.balanceOf(address(adapter)));
         log_named_uint("cf", get_cf());
         assertLt(usdc.balanceOf(address(a)), 200 * 1e6, "less usdc after");
         assertGt(usdc.balanceOf(address(a)), 199 * 1e6, "less usdc after");
@@ -827,7 +825,7 @@ contract CompoundIntegrationTest is TestBase {
         assertLt(adapter.stake(address(a)), 1e18/1e6, "zero balance after full exit");
     }
     function test_nav_drop_with_liquidation() public {
-        require(CToken(address(cusdc)).accrueInterest() == 0);
+        require(CTokenLike(address(cusdc)).accrueInterest() == 0);
         enable_seize(address(this));
 
         (Usr a,) = init_user();
@@ -839,16 +837,16 @@ contract CompoundIntegrationTest is TestBase {
         assertEq(usdc.balanceOf(address(a)), 100 * 1e6);
 
         logs("wind===");
-        strategy.wind(0, 5, 0);
+        adapter.wind(0, 5, 0);
 
         assertGt(get_cf(), 0.673e18, "near minimum");
         assertLt(get_cf(), 0.675e18, "under target");
 
         uint liquidity; uint shortfall; uint supp; uint borr;
-        supp = CToken(address(cusdc)).balanceOfUnderlying(address(strategy));
-        borr = CToken(address(cusdc)).borrowBalanceStored(address(strategy));
+        supp = CTokenLike(address(cusdc)).balanceOfUnderlying(address(adapter));
+        borr = CTokenLike(address(cusdc)).borrowBalanceStored(address(adapter));
         (, liquidity, shortfall) =
-            troll.getAccountLiquidity(address(strategy));
+            troll.getAccountLiquidity(address(adapter));
         log_named_uint("cf  ", get_cf());
         log_named_uint("s  ", supp);
         log_named_uint("b  ", borr);
@@ -860,10 +858,10 @@ contract CompoundIntegrationTest is TestBase {
         reward(5000 days);
         assertLt(adapter.nps(), nps_before, "nps falls after interest");
 
-        supp = CToken(address(cusdc)).balanceOfUnderlying(address(strategy));
-        borr = CToken(address(cusdc)).borrowBalanceStored(address(strategy));
+        supp = CTokenLike(address(cusdc)).balanceOfUnderlying(address(adapter));
+        borr = CTokenLike(address(cusdc)).borrowBalanceStored(address(adapter));
         (, liquidity, shortfall) =
-            troll.getAccountLiquidity(address(strategy));
+            troll.getAccountLiquidity(address(adapter));
         log_named_uint("cf' ", get_cf());
         log_named_uint("s' ", supp);
         log_named_uint("b' ", borr);
@@ -888,14 +886,14 @@ contract CompoundIntegrationTest is TestBase {
         assertTrue(!can_call( address(cusdc)
                             , abi.encodeWithSignature(
                                 "liquidateBorrow(address,uint256,address)",
-                                address(strategy), repay, CToken(address(cusdc)))),
+                                address(adapter), repay, CTokenLike(address(cusdc)))),
                   "can't perform liquidation");
-        cusdc.liquidateBorrow(address(strategy), repay, CToken(address(cusdc)));
+        cusdc.liquidateBorrow(address(adapter), repay, CTokenLike(address(cusdc)));
 
-        supp = CToken(address(cusdc)).balanceOfUnderlying(address(strategy));
-        borr = CToken(address(cusdc)).borrowBalanceStored(address(strategy));
+        supp = CTokenLike(address(cusdc)).balanceOfUnderlying(address(adapter));
+        borr = CTokenLike(address(cusdc)).borrowBalanceStored(address(adapter));
         (, liquidity, shortfall) =
-            troll.getAccountLiquidity(address(strategy));
+            troll.getAccountLiquidity(address(adapter));
         log_named_uint("cf' ", get_cf());
         log_named_uint("s' ", supp);
         log_named_uint("b' ", borr);
@@ -938,17 +936,17 @@ contract CompoundIntegrationTest is TestBase {
         enable_seize(address(this));
 
         manager.join(address(adapter), address(this), 100 * 1e6);
-        strategy.wind(0, 4, 0);
+        adapter.wind(0, 4, 0);
 
         uint seize = 100 * 1e8;
 
-        uint cusdc_before = cusdc.balanceOf(address(strategy));
+        uint cusdc_before = cusdc.balanceOf(address(adapter));
         assertEq(cusdc.balanceOf(address(this)), 0, "no cusdc before");
 
-        uint s = CToken(address(cusdc)).seize(address(this), address(strategy), seize);
+        uint s = CTokenLike(address(cusdc)).seize(address(this), address(adapter), seize);
         assertEq(s, 0, "seize successful");
 
-        uint cusdc_after = cusdc.balanceOf(address(strategy));
+        uint cusdc_after = cusdc.balanceOf(address(adapter));
         assertEq(cusdc.balanceOf(address(this)), seize, "cusdc after");
         assertEq(cusdc_before - cusdc_after, seize, "join supply decreased");
     }
@@ -960,15 +958,15 @@ contract CompoundIntegrationTest is TestBase {
         manager.join(address(adapter), address(this), 600 * 1e6);
         a.join(100 * 1e6);
         log_named_uint("nps", adapter.nps());
-        log_named_uint("usdc ", usdc.balanceOf(address(strategy)));
-        log_named_uint("cusdc", cusdc.balanceOf(address(strategy)));
+        log_named_uint("usdc ", usdc.balanceOf(address(adapter)));
+        log_named_uint("cusdc", cusdc.balanceOf(address(adapter)));
 
         logs("wind===");
-        strategy.wind(0, 5, 0);
+        adapter.wind(0, 5, 0);
         log_named_uint("nps", adapter.nps());
         log_named_uint("cf", get_cf());
-        log_named_uint("adapter usdc ", usdc.balanceOf(address(strategy)));
-        log_named_uint("adapter cusdc", cusdc.balanceOf(address(strategy)));
+        log_named_uint("adapter usdc ", usdc.balanceOf(address(adapter)));
+        log_named_uint("adapter cusdc", cusdc.balanceOf(address(adapter)));
         log_named_uint("adapter nav  ", adapter.nav());
         log_named_uint("a max usdc    ", mul(adapter.stake(address(a)), adapter.nps()) / 1e18);
 
@@ -978,12 +976,12 @@ contract CompoundIntegrationTest is TestBase {
         logs("seize===");
         uint seize = 350 * 1e6 * 1e18 / cusdc.exchangeRateCurrent();
         log_named_uint("seize", seize);
-        uint s = CToken(address(cusdc)).seize(address(this), address(strategy), seize);
+        uint s = CTokenLike(address(cusdc)).seize(address(this), address(adapter), seize);
         assertEq(s, 0, "seize successful");
         log_named_uint("nps", adapter.nps());
         log_named_uint("cf", get_cf());
-        log_named_uint("adapter usdc ", usdc.balanceOf(address(strategy)));
-        log_named_uint("adapter cusdc", cusdc.balanceOf(address(strategy)));
+        log_named_uint("adapter usdc ", usdc.balanceOf(address(adapter)));
+        log_named_uint("adapter cusdc", cusdc.balanceOf(address(adapter)));
         log_named_uint("adapter nav  ", adapter.nav());
         log_named_uint("a max usdc    ", mul(adapter.stake(address(a)), adapter.nps()) / 1e18);
 
