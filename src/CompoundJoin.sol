@@ -57,6 +57,7 @@ interface CTokenLike is ERC20 {
 }
 
 interface ComptrollerLike {
+    function accountAssets(address, uint256) external view returns (address);
     function enterMarkets(address[] calldata cTokens) external returns (uint256[] memory);
     function claimComp(address[] calldata holders, address[] calldata cTokens, bool borrowers, bool suppliers) external;
     function compAccrued(address) external returns (uint256);
@@ -74,7 +75,7 @@ interface ComptrollerLike {
 
 contract CompoundJoinImp is CropJoinImp {
     CTokenLike      immutable public cgem;
-    ComptrollerLike           public comptroller;
+    ComptrollerLike immutable public comptroller;
     uint256                   public minf = 0;  // minimum target collateral factor [wad]
     uint256                   public maxf = 0;  // maximum target collateral factor [wad]
     uint256                   public dust = 0;  // value (in gems) below which to stop looping
@@ -108,11 +109,13 @@ contract CompoundJoinImp is CropJoinImp {
 
         cgem = CTokenLike(cgem_);
         comptroller = ComptrollerLike(comptroller_);
+    }
 
-        ERC20(gem_).approve(cgem_, type(uint256).max);
+    function init() external {
+        ERC20(gem).approve(address(cgem), type(uint256).max);
 
         address[] memory ctokens = new address[](1);
-        ctokens[0] = cgem_;
+        ctokens[0] = address(cgem);
         uint256[] memory errors = new uint256[](1);
         errors = comptroller.enterMarkets(ctokens);
         require(errors[0] == 0);
@@ -127,11 +130,6 @@ contract CompoundJoinImp is CropJoinImp {
     }
 
     // --- Administration ---
-    function file(bytes32 what, address data) external auth {
-        if (what == "comptroller") comptroller = ComptrollerLike(data);
-        else revert("CompoundJoin/file-unrecognized-param");
-        emit File(what, data);
-    }
     function file(bytes32 what, uint256 data) external auth {
         if (what == "minf") require((minf = data) <= WAD, "CompoundJoin/bad-value");
         else if (what == "maxf") require((maxf = data) <= WAD, "CompoundJoin/bad-value");

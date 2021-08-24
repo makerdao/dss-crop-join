@@ -211,10 +211,12 @@ contract CompoundIntegrationTest is TestBase {
         base.setImplementation(address(new CropManagerImp(address(vat))));
         manager = CropManagerImp(address(base));
         CropJoin(address(adapter)).rely(address(manager));
-        CropJoin(address(adapter)).deny(address(this));    // Only access should be through manager
         vat.rely(address(adapter));
+        adapter.init();
         adapter.file("minf", 0.674e18);
         adapter.file("maxf", 0.675e18);
+        adapter.file("dust", 1e6);
+        CropJoin(address(adapter)).deny(address(this));    // Only access should be through manager
 
         // give ourselves some usdc
         giveTokens(address(usdc), 1000 * 1e6);
@@ -287,6 +289,12 @@ contract CompoundIntegrationTest is TestBase {
         hevm.warp(block.timestamp + tic);
         // unneeded?
         hevm.roll(block.number + tic / 15);
+    }
+
+    function test_double_init() public {
+        assertTrue(ComptrollerLike(address(troll)).accountAssets(address(adapter), 0) != address(0));
+        adapter.init();     // Should be idempotent
+        assertTrue(ComptrollerLike(address(troll)).accountAssets(address(adapter), 0) != address(0));
     }
 
     function test_reward_unwound() public {
