@@ -234,7 +234,7 @@ contract CompoundIntegrationTest is TestBase {
         a = new Usr(hevm, adapter, manager, ERC20(address(usdc)));
         b = new Usr(hevm, adapter, manager, ERC20(address(usdc)));
 
-        giveTokens(address(usdc), 2 * cash);
+        giveTokens(address(usdc), usdc.balanceOf(address(this)) + 2 * cash);
 
         usdc.transfer(address(a), cash);
         usdc.transfer(address(b), cash);
@@ -283,18 +283,19 @@ contract CompoundIntegrationTest is TestBase {
         assertEq(CTokenLike(address(cusdc)).underlying(), address(usdc));
     }
 
+    function test_double_init() public {
+        address cgem = ComptrollerLike(address(troll)).accountAssets(address(adapter), 0);
+        assertTrue(cgem != address(0));
+        adapter.init();     // Should be idempotent
+        assertEq(ComptrollerLike(address(troll)).accountAssets(address(adapter), 0), cgem);
+    }
+
     function reward(uint256 tic) internal {
         log_named_uint("=== tic ==>", tic);
         // accrue ~tic day of rewards
         hevm.warp(block.timestamp + tic);
         // unneeded?
         hevm.roll(block.number + tic / 15);
-    }
-
-    function test_double_init() public {
-        assertTrue(ComptrollerLike(address(troll)).accountAssets(address(adapter), 0) != address(0));
-        adapter.init();     // Should be idempotent
-        assertTrue(ComptrollerLike(address(troll)).accountAssets(address(adapter), 0) != address(0));
     }
 
     function test_reward_unwound() public {
