@@ -64,11 +64,11 @@ contract Usr {
     function dai() public view returns (uint256) {
         return adapter.vat().dai(address(this));
     }
-    function allow(address usr) public {
-        manager.allow(address(usr));
+    function hope(address usr) public {
+        manager.hope(address(usr));
     }
-    function disallow(address usr) public {
-        manager.disallow(address(usr));
+    function nope(address usr) public {
+        manager.nope(address(usr));
     }
     function reap() public {
         manager.join(address(adapter), address(this), 0);
@@ -177,12 +177,12 @@ contract CropManagerTest is TestBase {
         assertTrue(manager.proxy(address(this)) != address(0));
     }
 
-    function test_allow_disallow() public {
+    function test_hope_nope() public {
         (Usr a, Usr b) = init_user();
         assertEq(manager.can(address(b), address(a)), 0);
-        b.allow(address(a));
+        b.hope(address(a));
         assertEq(manager.can(address(b), address(a)), 1);
-        b.disallow(address(a));
+        b.nope(address(a));
         assertEq(manager.can(address(b), address(a)), 0);
     }
 
@@ -385,7 +385,7 @@ contract CropManagerTest is TestBase {
         a.join(address(b), 100 * 1e6);
         assertEq(gem.balanceOf(address(a)), 100 * 1e6);
         assertEq(b.gems(), 100 * 1e18);
-        b.allow(address(a));
+        b.hope(address(a));
         a.frob(address(b), address(b), address(a), 100 * 1e18, 50 * 1e18);
         assertEq(b.gems(), 0);
         (uint256 ink, uint256 art) = b.urn();
@@ -410,8 +410,8 @@ contract CropManagerTest is TestBase {
     function testFail_frob_other2() public {
         (Usr a, Usr b) = init_user();
         a.join(address(b), 100 * 1e6);
-        b.allow(address(a));
-        b.disallow(address(a));
+        b.hope(address(a));
+        b.nope(address(a));
         a.frob(address(b), address(b), address(a), 100 * 1e18, 50 * 1e18);
     }
 
@@ -458,7 +458,7 @@ contract CropManagerTest is TestBase {
         a.join(100 * 1e6);
         assertEq(a.gems(), 100 * 1e18);
         assertEq(a.stake(), 100 * 1e18);
-        a.allow(address(b));
+        a.hope(address(b));
         b.flux(address(a), address(b), 100 * 1e18);
         assertEq(a.gems(), 0);
         assertEq(a.stake(), 0);
@@ -479,8 +479,8 @@ contract CropManagerTest is TestBase {
     function testFail_flux_from_other2() public {
         (Usr a, Usr b) = init_user();
         a.join(100 * 1e6);
-        a.allow(address(b));
-        a.disallow(address(b));
+        a.hope(address(b));
+        a.nope(address(b));
         b.flux(address(a), address(b), 100 * 1e18);
     }
 
