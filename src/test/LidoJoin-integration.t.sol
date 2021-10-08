@@ -102,7 +102,7 @@ contract Usr {
         if (token.balanceOf(address(this)) == amount) return;
 
         // Solidity-style
-        for (uint256 i = 0; i < 200; i++) {
+        for (uint256 i = 0; i < 20; i++) {
             // Scan the storage for the balance storage slot
             bytes32 prevValue = hevm.load(
                 address(token),
@@ -127,7 +127,7 @@ contract Usr {
         }
 
         // Vyper-style
-        for (uint256 i = 0; i < 200; i++) {
+        for (uint256 i = 0; i < 20; i++) {
             // Scan the storage for the balance storage slot
             bytes32 prevValue = hevm.load(
                 address(token),
@@ -242,6 +242,123 @@ contract LidoIntegrationTest is TestBase {
         assertEq(pool.balanceOf(address(join)), 5 ether);
         assertEq(gem.balanceOf(address(join)), 0 ether);
         assertEq(user1.tokens(), origBal - 5 ether);
+    }
+
+    function test_join_exit_none() public {
+        uint256 origBal = user1.tokens();
+
+        user1.join(10 ether);
+
+        assertEq(pool.balanceOf(address(join)), 10 ether);
+        assertEq(gem.balanceOf(address(join)), 0 ether);
+        assertEq(user1.tokens(), origBal - 10 ether);
+
+        user1.exit(0 ether);
+
+        assertEq(pool.balanceOf(address(join)), 10 ether);
+        assertEq(gem.balanceOf(address(join)), 0 ether);
+        assertEq(user1.tokens(), origBal - 10 ether);
+    }
+
+    function test_flee() public {
+        uint256 origBal = user1.tokens();
+
+        user1.join(10 ether);
+
+        // Acquire some rewards
+        hevm.warp(now + 100 days);
+
+        assertEq(pool.balanceOf(address(join)), 10 ether);
+        assertEq(user1.tokens(), origBal - 10 ether);
+
+        user1.flee();   // Should exit without rewards
+
+        assertEq(pool.balanceOf(address(join)), 0 ether);
+        assertEq(user1.tokens(), origBal);
+        assertEq(user1.bonus(), 0 ether);
+    }
+
+    function test_cage() public {
+        // Re-auth the join to cage it
+        giveAuthAccess(address(join), address(this));
+
+        uint256 origBal = user1.tokens();
+
+        user1.join(10 ether);
+
+        // Acquire some rewards
+        hevm.warp(now + 100 days);
+
+        assertEq(pool.balanceOf(address(join)), 10 ether);
+        assertEq(gem.balanceOf(address(join)), 0 ether);
+        assertEq(user1.tokens(), origBal - 10 ether);
+        assertEq(CropJoin(address(join)).live(), 1);
+
+        join.cage();
+
+        assertEq(CropJoin(address(join)).live(), 0);
+        assertEq(pool.balanceOf(address(join)), 0 ether);
+        assertEq(gem.balanceOf(address(join)), 10 ether);
+        assertEq(user1.tokens(), origBal - 10 ether);
+
+        // Can get all my gems
+        user1.exit(10 ether);
+
+        assertEq(pool.balanceOf(address(join)), 0 ether);
+        assertEq(gem.balanceOf(address(join)), 0 ether);
+        assertEq(user1.tokens(), origBal);
+    }
+
+    function test_cage_uncage() public {
+        // Re-auth the join to cage it
+        giveAuthAccess(address(join), address(this));
+
+        uint256 origBal = user1.tokens();
+
+        user1.join(10 ether);
+
+        // Acquire some rewards
+        hevm.warp(now + 100 days);
+
+        assertEq(pool.balanceOf(address(join)), 10 ether);
+        assertEq(gem.balanceOf(address(join)), 0 ether);
+        assertEq(user1.tokens(), origBal - 10 ether);
+        assertEq(CropJoin(address(join)).live(), 1);
+
+        join.cage();
+
+        assertEq(CropJoin(address(join)).live(), 0);
+        assertEq(pool.balanceOf(address(join)), 0 ether);
+        assertEq(gem.balanceOf(address(join)), 10 ether);
+        assertEq(user1.tokens(), origBal - 10 ether);
+
+        join.uncage();
+
+        assertEq(CropJoin(address(join)).live(), 1);
+        assertEq(pool.balanceOf(address(join)), 10 ether);
+        assertEq(gem.balanceOf(address(join)), 0 ether);
+        assertEq(user1.tokens(), origBal - 10 ether);
+    }
+
+    function testFail_uncage() public {
+        // Re-auth the join to cage it
+        giveAuthAccess(address(join), address(this));
+
+        user1.join(10 ether);
+
+        // Acquire some rewards
+        hevm.warp(now + 100 days);
+
+        join.uncage();      // This will fail
+    }
+
+    function testFail_cage_join() public {
+        // Re-auth the join to cage it
+        giveAuthAccess(address(join), address(this));
+
+        join.cage();
+
+        user1.join(10 ether);      // This will fail
     }
 
 }

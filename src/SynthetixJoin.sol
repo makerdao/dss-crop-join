@@ -96,6 +96,8 @@ contract SynthetixJoinImp is CropJoinImp {
         live = 0;
     }
     function uncage() external auth {
+        require(live == 0, "SynthetixJoin/live");
+
         if (total > 0) pool.stake(total);
         live = 1;
     }
