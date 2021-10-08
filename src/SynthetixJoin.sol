@@ -72,12 +72,12 @@ contract SynthetixJoinImp is CropJoinImp {
 
     function join(address urn, address usr, uint256 val) public override {
         super.join(urn, usr, val);
-        pool.stake(val);
+        if (val > 0) pool.stake(val);
     }
 
     function exit(address urn, address usr, uint256 val) public override {
         if (live == 1) {
-            pool.withdraw(val);
+            if (val > 0) pool.withdraw(val);
         }
         super.exit(urn, usr, val);
     }
@@ -85,18 +85,18 @@ contract SynthetixJoinImp is CropJoinImp {
     function flee(address urn, address usr) public override {
         if (live == 1) {
             uint256 val = vat.gem(ilk, urn);
-            pool.withdraw(val);
+            if (val > 0) pool.withdraw(val);
         }
         super.flee(urn, usr);
     }
     function cage() override public auth {
         require(live == 1, "SynthetixJoin/not-live");
 
-        pool.withdraw(total);
+        if (total > 0) pool.withdraw(total);
         live = 0;
     }
     function uncage() external auth {
-        pool.stake(total);
+        if (total > 0) pool.stake(total);
         live = 1;
     }
 }
