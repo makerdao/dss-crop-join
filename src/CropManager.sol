@@ -18,6 +18,7 @@ pragma solidity 0.6.12;
 
 interface VatLike {
     function live() external view returns (uint256);
+    function wards(address) external view returns (uint256);
     function urns(bytes32, address) external view returns (uint256, uint256);
     function dai(address) external view returns (uint256);
     function fork(bytes32, address, address, int256, int256) external;
@@ -36,7 +37,7 @@ interface CropLike {
     function flee(address, address) external;
 }
 
-interface TokenLike {
+interface GemLike {
     function approve(address, uint256) external;
     function transferFrom(address, address, uint256) external;
 }
@@ -107,8 +108,8 @@ contract CropManagerImp {
     mapping (address => address) public proxy; // UrnProxy per user
     mapping (address => mapping (address => uint256)) public can;
 
-    event Allow(address indexed from, address indexed to);
-    event Disallow(address indexed from, address indexed to);
+    event Hope(address indexed from, address indexed to);
+    event Nope(address indexed from, address indexed to);
 
     address public immutable vat;
     constructor(address vat_) public {
@@ -120,14 +121,14 @@ contract CropManagerImp {
         _;
     }
 
-    function allow(address usr) external {
+    function hope(address usr) external {
         can[msg.sender][usr] = 1;
-        emit Allow(msg.sender, usr);
+        emit Hope(msg.sender, usr);
     }
 
-    function disallow(address usr) external {
+    function nope(address usr) external {
         can[msg.sender][usr] = 0;
-        emit Disallow(msg.sender, usr);
+        emit Nope(msg.sender, usr);
     }
 
     function getOrCreateProxy(address usr) public returns (address urp) {
@@ -138,24 +139,33 @@ contract CropManagerImp {
     }
 
     function join(address crop, address usr, uint256 val) external {
-        TokenLike(CropLike(crop).gem()).transferFrom(msg.sender, address(this), val);
-        TokenLike(CropLike(crop).gem()).approve(crop, val);
+        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
+
+        address gem = CropLike(crop).gem();
+        GemLike(gem).transferFrom(msg.sender, address(this), val);
+        GemLike(gem).approve(crop, val);
         CropLike(crop).join(getOrCreateProxy(usr), usr, val);
     }
 
     function exit(address crop, address usr, uint256 val) external {
+        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
+
         address urp = proxy[msg.sender];
         require(urp != address(0), "CropManager/non-existing-urp");
         CropLike(crop).exit(urp, usr, val);
     }
 
     function flee(address crop) external {
+        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
+
         address urp = proxy[msg.sender];
         require(urp != address(0), "CropManager/non-existing-urp");
         CropLike(crop).flee(urp, msg.sender);
     }
 
     function frob(address crop, address u, address v, address w, int256 dink, int256 dart) external allowed(u) {
+        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
+
         require(u == v && w == msg.sender, "CropManager/not-matching");
         address urp = getOrCreateProxy(u);
 
@@ -163,6 +173,8 @@ contract CropManagerImp {
     }
 
     function flux(address crop, address src, address dst, uint256 wad) external allowed(src) {
+        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
+
         address surp = getOrCreateProxy(src);
         address durp = getOrCreateProxy(dst);
 
