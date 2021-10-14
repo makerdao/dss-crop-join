@@ -71,6 +71,9 @@ contract MockVat {
     function cage() external {
         live = 0;
     }
+    function wards(address usr) external view returns (uint256) {
+        return 1;
+    }
 }
 
 contract Usr {
