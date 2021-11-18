@@ -244,6 +244,26 @@ contract LidoIntegrationTest is TestBase {
         assertEq(user1.tokens(), origBal - 5 ether);
     }
 
+    function test_join_exit_rewards() public {
+        uint256 origBal = user1.tokens();
+
+        user1.join(10 ether);
+
+        assertEq(pool.balanceOf(address(join)), 10 ether);
+        assertEq(gem.balanceOf(address(join)), 0 ether);
+        assertEq(user1.tokens(), origBal - 10 ether);
+        assertEq(user1.bonus(), 0 ether);
+
+        // Acquire some rewards
+        hevm.warp(now + 100 days);
+        user1.exit(5 ether);
+
+        assertEq(pool.balanceOf(address(join)), 5 ether);
+        assertEq(gem.balanceOf(address(join)), 0 ether);
+        assertEq(user1.tokens(), origBal - 5 ether);
+        assertGt(user1.bonus(), 0 ether);
+    }
+
     function test_join_exit_none() public {
         uint256 origBal = user1.tokens();
 
