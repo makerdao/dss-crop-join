@@ -10,3 +10,6 @@
 [submodule "lib/dss-gem-joins"]
 	path = lib/dss-gem-joins
 	url = https://github.com/makerdao/dss-gem-joins
+[submodule "lib/proxy-registry"]
+	path = lib/proxy-registry
+	url = https://github.com/makerdao/proxy-registry
