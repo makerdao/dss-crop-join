@@ -3,8 +3,7 @@ pragma solidity ^0.6.12;
 import "ds-test/test.sol";
 
 import "../DssProxyActionsCharter.sol";
-import {CharterManager, CharterManagerImp} from "../CharterManager.sol";
-import {ManagedGemJoin} from "lib/dss-gem-joins/src/join-managed.sol";
+import {CharterManager, CharterManagerImp} from "../CropManager.sol";
 
 import {DssDeployTestBase} from "dss-deploy/DssDeploy.t.base.sol";
 import {WBTC} from "dss-gem-joins/tokens/WBTC.sol";
