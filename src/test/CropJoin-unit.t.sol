@@ -47,6 +47,10 @@ contract MockVat {
     function slip(bytes32 ilk, address usr, int256 wad) external {
         gem[ilk][usr] = add(gem[ilk][usr], wad);
     }
+    function move(address src, address dst, uint256 rad) external {
+        dai[src] = sub(dai[src], rad);
+        dai[dst] = add(dai[dst], rad);
+    }
     function frob(bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) external {
         Urn storage urn = urns[ilk][u];
         urn.ink = add(urn.ink, dink);

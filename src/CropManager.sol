@@ -24,6 +24,7 @@ interface VatLike {
     function fork(bytes32, address, address, int256, int256) external;
     function frob(bytes32, address, address, address, int256, int256) external;
     function flux(bytes32, address, address, uint256) external;
+    function move(address, address, uint256) external;
     function hope(address) external;
     function nope(address) external;
 }
@@ -163,10 +164,17 @@ contract CropManagerImp {
         CropLike(crop).flee(urp, msg.sender);
     }
 
-    function frob(address crop, address u, address v, address w, int256 dink, int256 dart) external allowed(u) {
+    function move(address u, address dst, uint256 rad) external allowed(u) {
+        address urp = proxy[u];
+        require(urp != address(0), "CropManager/non-existing-urp");
+
+        VatLike(vat).move(urp, dst, rad);
+    }
+
+    function frob(address crop, address u, address v, address w, int256 dink, int256 dart) external allowed(u) allowed(w) {
         require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
 
-        require(u == v && w == msg.sender, "CropManager/not-matching");
+        require(u == v, "CropManager/not-matching");
         address urp = getOrCreateProxy(u);
 
         VatLike(vat).frob(CropLike(crop).ilk(), urp, urp, w, dink, dart);
@@ -196,10 +204,12 @@ contract CropManagerImp {
         CropLike(crop).tack(from, to, wad);
     }
 
-    function quit(bytes32 ilk, address dst) external {
+    function quit(bytes32 ilk, address u, address dst) external allowed(u) allowed(dst) {
         require(VatLike(vat).live() == 0, "CropManager/vat-still-live");
 
-        address urp = getOrCreateProxy(msg.sender);
+        address urp = proxy[u];
+        require(urp != address(0), "CropManager/non-existing-urp");
+
         (uint256 ink, uint256 art) = VatLike(vat).urns(ilk, urp);
         require(int256(ink) >= 0, "CropManager/overflow");
         require(int256(art) >= 0, "CropManager/overflow");

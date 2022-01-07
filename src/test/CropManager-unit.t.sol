@@ -46,6 +46,9 @@ contract Usr {
     function exit(uint256 wad) public {
         manager.exit(address(adapter), address(this), wad);
     }
+    function move(address u, address dst, uint256 rad) public {
+        manager.move(u, dst, rad);
+    }
     function proxy() public view returns (address) {
         return manager.proxy(address(this));
     }
@@ -85,6 +88,9 @@ contract Usr {
     function frobDirect(address u, address v, address w, int256 dink, int256 dart) public {
         VatLike(manager.vat()).frob(adapter.ilk(), u, v, w, dink, dart);
     }
+    function moveDirect(address usr, uint256 rad) public {
+        VatLike(manager.vat()).move(address(this), usr, rad);
+    }
     function flux(address src, address dst, uint256 wad) public {
         manager.flux(address(adapter), src, dst, wad);
     }
@@ -92,10 +98,10 @@ contract Usr {
         VatLike(manager.vat()).flux(adapter.ilk(), src, dst, wad);
     }
     function quit() public {
-        manager.quit(adapter.ilk(), address(this));
+        manager.quit(adapter.ilk(), address(this), address(this));
     }
-    function quit(address dst) public {
-        manager.quit(adapter.ilk(), dst);
+    function quit(address u, address dst) public {
+        manager.quit(adapter.ilk(), u, dst);
     }
 
     function try_call(address addr, bytes calldata data) external returns (bool) {
@@ -376,7 +382,7 @@ contract CropManagerTest is TestBase {
         a.frob(address(a), address(a), address(this), 100 * 1e18, 50 * 1e18);
     }
 
-    function test_frob_other() public {
+    function test_frob_other_u() public {
         (Usr a, Usr b) = init_user();
         assertEq(a.gems(), 0);
         assertEq(b.gems(), 0);
@@ -401,18 +407,116 @@ contract CropManagerTest is TestBase {
         assertEq(b.gems(), 100 * 1e18);
     }
 
-    function testFail_frob_other1() public {
+    function testFail_frob_other_u_1() public {
         (Usr a, Usr b) = init_user();
         a.join(address(b), 100 * 1e6);
         a.frob(address(b), address(b), address(a), 100 * 1e18, 50 * 1e18);
     }
 
-    function testFail_frob_other2() public {
+    function testFail_frob_other_u_2() public {
         (Usr a, Usr b) = init_user();
         a.join(address(b), 100 * 1e6);
         b.hope(address(a));
         b.nope(address(a));
         a.frob(address(b), address(b), address(a), 100 * 1e18, 50 * 1e18);
+    }
+
+    function test_frob_other_w() public {
+        (Usr a, Usr b) = init_user();
+        b.join(100 * 1e6);
+        b.hope(address(a));
+        a.frob(address(b), address(b), address(b), 100 * 1e18, 50 * 1e18);
+        (uint256 ink, uint256 art) = b.urn();
+        assertEq(ink, 100 * 1e18);
+        assertEq(art, 50 * 1e18);
+        assertEq(b.dai(), 50 * 1e45);
+        assertEq(a.gems(), 0);
+        assertEq(b.gems(), 0);
+        a.frob(address(b), address(b), address(b), -100 * 1e18, -50 * 1e18);
+        (ink, art) = b.urn();
+        assertEq(ink, 0);
+        assertEq(art, 0);
+        assertEq(a.dai(), 0);
+        assertEq(b.dai(), 0);
+        assertEq(b.gems(), 100 * 1e18);
+    }
+
+    function testFail_frob_other_w() public {
+        (Usr a, Usr b) = init_user();
+        a.join(100 * 1e6);
+        // a can not frob to/from b without permission
+        a.frob(address(a), address(a), address(b), 100 * 1e18, 50 * 1e18);
+    }
+
+    function test_exit() public {
+        (Usr a,) = init_user();
+        assertEq(gem.balanceOf(address(a)), 200 * 1e6);
+
+        a.join(200 * 1e6);
+        assertEq(a.gems(), 200 * 1e18);
+        assertEq(gem.balanceOf(address(a)), 0);
+
+        // check exit of unlocked gems does not affect the vault and does not prevent increasing debt
+        a.exit(200 * 1e6);
+        assertEq(a.gems(), 0);
+        assertEq(gem.balanceOf(address(a)), 200 * 1e6);
+    }
+
+    function test_exit_to_other() public {
+        (Usr a, Usr b) = init_user();
+        assertEq(gem.balanceOf(address(a)), 200 * 1e6);
+
+        a.join(200 * 1e6);
+        assertEq(a.gems(), 200 * 1e18);
+        assertEq(gem.balanceOf(address(a)), 0);
+
+        assertEq(gem.balanceOf(address(b)), 200 * 1e6);
+        a.exit(address(b), 200 * 1e6);
+        assertEq(a.gems(), 0);
+        assertEq(b.gems(), 0);
+        assertEq(gem.balanceOf(address(b)), 400 * 1e6);
+    }
+
+    function test_move() public {
+        (Usr a,) = init_user();
+        a.join(100 * 1e6);
+        a.frob(100 * 1e18, 2 * 1e18);
+        assertEq(vat.dai(address(a)), 2 * 1e45);
+        manager.getOrCreateProxy(address(a));
+        a.moveDirect(a.proxy(), 2 * 1e45);
+        assertEq(vat.dai(a.proxy()), 2 * 1e45);
+
+        a.move(address(a), address(this), 2 * 1e45);
+        assertEq(vat.dai(a.proxy()), 0);
+        assertEq(vat.dai(address(this)), 2 * 1e45);
+    }
+
+    function test_move_from_other() public {
+        (Usr a, Usr b) = init_user();
+        a.join(100 * 1e6);
+        a.frob(100 * 1e18, 2 * 1e18);
+        assertEq(vat.dai(address(a)), 2 * 1e45);
+        manager.getOrCreateProxy(address(a));
+        a.moveDirect(a.proxy(), 2 * 1e45);
+        assertEq(vat.dai(a.proxy()), 2 * 1e45);
+
+        a.hope(address(b));
+        b.move(address(a), address(this), 2 * 1e45);
+        assertEq(vat.dai(a.proxy()), 0);
+        assertEq(vat.dai(address(this)), 2 * 1e45);
+    }
+
+    function testFail_move_from_other() public {
+        (Usr a, Usr b) = init_user();
+        a.join(100 * 1e6);
+        a.frob(100 * 1e18, 2 * 1e18);
+        assertEq(vat.dai(address(a)), 2 * 1e45);
+        manager.getOrCreateProxy(address(a));
+        a.moveDirect(a.proxy(), 2 * 1e45);
+        assertEq(vat.dai(a.proxy()), 2 * 1e45);
+
+        // b is not authorized to to move dai from a's proxy
+        b.move(address(a), address(this), 2 * 1e45);
     }
 
     function test_flux_to_other() public {
@@ -533,6 +637,89 @@ contract CropManagerTest is TestBase {
         a.exit(100 * 1e6);
         assertEq(vat.gem(ilk, a.proxy()), 0);
         assertEq(gem.balanceOf(address(a)), 200 * 1e6);
+    }
+
+    function test_quit_from_other() public {
+        (Usr a, Usr b) = init_user();
+        a.join(100 * 1e6);
+        a.frob(100 * 1e18, 50 * 1e18);
+        vat.cage();
+        (uint256 ink, uint256 art) = vat.urns(ilk, a.proxy());
+        assertEq(ink, 100 * 1e18);
+        assertEq(art, 50 * 1e18);
+        (ink, art) = vat.urns(ilk, address(a));
+        assertEq(ink, 0);
+        assertEq(art, 0);
+        assertEq(vat.gem(ilk, address(a)), 0);
+        a.hope(address(b));
+        b.quit(address(a), address(a));
+        (ink, art) = vat.urns(ilk, a.proxy());
+        assertEq(ink, 0);
+        assertEq(art, 0);
+        (ink, art) = vat.urns(ilk, address(a));
+        assertEq(ink, 100 * 1e18);
+        assertEq(art, 50 * 1e18);
+        assertEq(vat.gem(ilk, address(a)), 0);
+    }
+
+    function testFail_quit_from_other() public {
+        (Usr a, Usr b) = init_user();
+        a.join(100 * 1e6);
+        a.frob(100 * 1e18, 50 * 1e18);
+        vat.cage();
+        (uint256 ink, uint256 art) = vat.urns(ilk, a.proxy());
+        assertEq(ink, 100 * 1e18);
+        assertEq(art, 50 * 1e18);
+        (ink, art) = vat.urns(ilk, address(a));
+        assertEq(ink, 0);
+        assertEq(art, 0);
+        assertEq(vat.gem(ilk, address(a)), 0);
+        // b is not allowed to quit a
+        b.quit(address(a), address(a));
+    }
+
+    function test_quit_to_other() public {
+        (Usr a, Usr b) = init_user();
+        a.join(100 * 1e6);
+        a.frob(100 * 1e18, 50 * 1e18);
+        vat.cage();
+        (uint256 ink, uint256 art) = vat.urns(ilk, a.proxy());
+        assertEq(ink, 100 * 1e18);
+        assertEq(art, 50 * 1e18);
+        (ink, art) = vat.urns(ilk, address(a));
+        assertEq(ink, 0);
+        assertEq(art, 0);
+        assertEq(vat.gem(ilk, address(a)), 0);
+        b.hope(address(a));
+        a.quit(address(a), address(b));
+        (ink, art) = vat.urns(ilk, a.proxy());
+        assertEq(ink, 0);
+        assertEq(art, 0);
+        (ink, art) = vat.urns(ilk, b.proxy());
+        assertEq(ink, 0);
+        assertEq(art, 0);
+        (ink, art) = vat.urns(ilk, address(b));
+        assertEq(ink, 100 * 1e18);
+        assertEq(art, 50 * 1e18);
+        assertEq(vat.gem(ilk, address(a)), 0);
+        assertEq(vat.gem(ilk, address(b)), 0);
+    }
+
+    function testFail_quit_to_other() public {
+        (Usr a, Usr b) = init_user();
+        a.join(100 * 1e6);
+        a.frob(100 * 1e18, 50 * 1e18);
+        vat.cage();
+        (uint256 ink, uint256 art) = vat.urns(ilk, a.proxy());
+        assertEq(ink, 100 * 1e18);
+        assertEq(art, 50 * 1e18);
+        (ink, art) = vat.urns(ilk, address(a));
+        assertEq(ink, 0);
+        assertEq(art, 0);
+        assertEq(vat.gem(ilk, address(a)), 0);
+
+        // quit to an unauthorized dst should fail
+        a.quit(address(a), address(b));
     }
 
     // Make sure we can't call most functions on the cropper directly
