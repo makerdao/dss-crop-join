@@ -172,7 +172,7 @@ contract CropManagerImp {
     }
 
     function frob(bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) external allowed(u) allowed(w) {
-        // The u == v requirement can never be relaxed as otherwise tack() can looe track of the rewards
+        // The u == v requirement can never be relaxed as otherwise tack() can lose track of the rewards
         require(u == v, "CropManager/not-matching");
         address urp = getOrCreateProxy(u);
 
