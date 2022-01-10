@@ -24,6 +24,7 @@ interface VatLike {
     function fork(bytes32, address, address, int256, int256) external;
     function frob(bytes32, address, address, address, int256, int256) external;
     function flux(bytes32, address, address, uint256) external;
+    function move(address, address, uint256) external;
     function hope(address) external;
     function nope(address) external;
 }
@@ -163,13 +164,19 @@ contract CropManagerImp {
         CropLike(crop).flee(urp, msg.sender);
     }
 
-    function frob(address crop, address u, address v, address w, int256 dink, int256 dart) external allowed(u) {
-        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
+    function move(address u, address dst, uint256 rad) external allowed(u) {
+        address urp = proxy[u];
+        require(urp != address(0), "CropManager/non-existing-urp");
 
-        require(u == v && w == msg.sender, "CropManager/not-matching");
+        VatLike(vat).move(urp, dst, rad);
+    }
+
+    function frob(bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) external allowed(u) allowed(w) {
+        // The u == v requirement can never be relaxed as otherwise tack() can lose track of the rewards
+        require(u == v, "CropManager/not-matching");
         address urp = getOrCreateProxy(u);
 
-        VatLike(vat).frob(CropLike(crop).ilk(), urp, urp, w, dink, dart);
+        VatLike(vat).frob(ilk, urp, urp, w, dink, dart);
     }
 
     function flux(address crop, address src, address dst, uint256 wad) external allowed(src) {
@@ -196,10 +203,12 @@ contract CropManagerImp {
         CropLike(crop).tack(from, to, wad);
     }
 
-    function quit(bytes32 ilk, address dst) external {
+    function quit(bytes32 ilk, address u, address dst) external allowed(u) allowed(dst) {
         require(VatLike(vat).live() == 0, "CropManager/vat-still-live");
 
-        address urp = getOrCreateProxy(msg.sender);
+        address urp = proxy[u];
+        require(urp != address(0), "CropManager/non-existing-urp");
+
         (uint256 ink, uint256 art) = VatLike(vat).urns(ilk, urp);
         require(int256(ink) >= 0, "CropManager/overflow");
         require(int256(art) >= 0, "CropManager/overflow");
