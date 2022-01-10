@@ -171,13 +171,12 @@ contract CropManagerImp {
         VatLike(vat).move(urp, dst, rad);
     }
 
-    function frob(address crop, address u, address v, address w, int256 dink, int256 dart) external allowed(u) allowed(w) {
-        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
-
+    function frob(bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) external allowed(u) allowed(w) {
+        // The u == v requirement can never be relaxed as otherwise tack() can lose track of the rewards
         require(u == v, "CropManager/not-matching");
         address urp = getOrCreateProxy(u);
 
-        VatLike(vat).frob(CropLike(crop).ilk(), urp, urp, w, dink, dart);
+        VatLike(vat).frob(ilk, urp, urp, w, dink, dart);
     }
 
     function flux(address crop, address src, address dst, uint256 wad) external allowed(src) {

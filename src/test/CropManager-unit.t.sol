@@ -80,10 +80,10 @@ contract Usr {
         manager.flee(address(adapter));
     }
     function frob(int256 dink, int256 dart) public {
-        manager.frob(address(adapter), address(this), address(this), address(this), dink, dart);
+        manager.frob(adapter.ilk(), address(this), address(this), address(this), dink, dart);
     }
     function frob(address u, address v, address w, int256 dink, int256 dart) public {
-        manager.frob(address(adapter), u, v, w, dink, dart);
+        manager.frob(adapter.ilk(), u, v, w, dink, dart);
     }
     function frobDirect(address u, address v, address w, int256 dink, int256 dart) public {
         VatLike(manager.vat()).frob(adapter.ilk(), u, v, w, dink, dart);
