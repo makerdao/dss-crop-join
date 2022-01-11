@@ -30,7 +30,7 @@ interface VatLike {
 }
 
 interface CropLike {
-    function gem() external view returns (address);
+    function gem() external view returns (GemLike);
     function ilk() external view returns (bytes32);
     function join(address, address, uint256) external;
     function exit(address, address, uint256) external;
@@ -142,9 +142,9 @@ contract CropManagerImp {
     function join(address crop, address usr, uint256 val) external {
         require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
 
-        address gem = CropLike(crop).gem();
-        GemLike(gem).transferFrom(msg.sender, address(this), val);
-        GemLike(gem).approve(crop, val);
+        GemLike gem = CropLike(crop).gem();
+        gem.transferFrom(msg.sender, address(this), val);
+        gem.approve(crop, val);
         CropLike(crop).join(getOrCreateProxy(usr), usr, val);
     }
 
