@@ -18,7 +18,7 @@ pragma solidity 0.6.12;
 
 import "./TestBase.sol";
 import {ERC20, CropJoin, SynthetixJoinImp} from "../SynthetixJoin.sol";
-import {CropManager,CropManagerImp} from "../CropManager.sol";
+import {Cropper,CropperImp} from "../Cropper.sol";
 
 interface VatLike {
     function wards(address) external view returns (uint256);
@@ -42,36 +42,36 @@ contract Usr {
     Hevm hevm;
     VatLike vat;
     SynthetixJoinImp adapter;
-    CropManagerImp manager;
+    CropperImp cropper;
     ERC20 gem;
 
-    constructor(Hevm hevm_, SynthetixJoinImp join_, CropManagerImp manager_, ERC20 gem_) public {
+    constructor(Hevm hevm_, SynthetixJoinImp join_, CropperImp cropper_, ERC20 gem_) public {
         hevm = hevm_;
         adapter = join_;
-        manager = manager_;
+        cropper = cropper_;
         gem = gem_;
 
         vat = VatLike(address(adapter.vat()));
 
-        gem.approve(address(manager), uint(-1));
+        gem.approve(address(cropper), uint(-1));
 
-        manager.getOrCreateProxy(address(this));
+        cropper.getOrCreateProxy(address(this));
     }
 
     function join(address usr, uint wad) public {
-        manager.join(address(adapter), usr, wad);
+        cropper.join(address(adapter), usr, wad);
     }
     function join(uint wad) public {
-        manager.join(address(adapter), address(this), wad);
+        cropper.join(address(adapter), address(this), wad);
     }
     function exit(address usr, uint wad) public {
-        manager.exit(address(adapter), usr, wad);
+        cropper.exit(address(adapter), usr, wad);
     }
     function exit(uint wad) public {
-        manager.exit(address(adapter), address(this), wad);
+        cropper.exit(address(adapter), address(this), wad);
     }
     function proxy() public view returns (address) {
-        return manager.proxy(address(this));
+        return cropper.proxy(address(this));
     }
     function crops() public view returns (uint256) {
         return adapter.crops(proxy());
@@ -92,10 +92,10 @@ contract Usr {
         return adapter.vat().urns(adapter.ilk(), proxy());
     }
     function reap() public {
-        manager.join(address(adapter), address(this), 0);
+        cropper.join(address(adapter), address(this), 0);
     }
     function flee() public {
-        manager.flee(address(adapter));
+        cropper.flee(address(adapter));
     }
     function giveTokens(ERC20 token, uint256 amount) external {
         // Edge case - balance is already set for some reason
@@ -163,7 +163,7 @@ contract LidoIntegrationTest is TestBase {
     VatLike vat;
     bytes32 ilk = "CURVESTETHETH-A";
     SynthetixJoinImp join;
-    CropManagerImp manager;
+    CropperImp cropper;
 
     Usr user1;
     Usr user2;
@@ -182,16 +182,16 @@ contract LidoIntegrationTest is TestBase {
         baseJoin.setImplementation(address(new SynthetixJoinImp(address(vat), ilk, address(gem), address(bonus), address(pool))));
         join = SynthetixJoinImp(address(baseJoin));
         join.init();
-        CropManager baseManager = new CropManager();
-        baseManager.setImplementation(address(new CropManagerImp(address(vat))));
-        manager = CropManagerImp(address(baseManager));
-        baseJoin.rely(address(manager));
-        baseJoin.deny(address(this));    // Only access should be through manager
+        Cropper baseCropper = new Cropper();
+        baseCropper.setImplementation(address(new CropperImp(address(vat))));
+        cropper = CropperImp(address(baseCropper));
+        baseJoin.rely(address(cropper));
+        baseJoin.deny(address(this));    // Only access should be through cropper
         vat.rely(address(baseJoin));
         assertEq(address(join.pool()), address(pool));
-        user1 = new Usr(hevm, join, manager, gem);
-        user2 = new Usr(hevm, join, manager, gem);
-        user3 = new Usr(hevm, join, manager, gem);
+        user1 = new Usr(hevm, join, cropper, gem);
+        user2 = new Usr(hevm, join, cropper, gem);
+        user3 = new Usr(hevm, join, cropper, gem);
 
         assertTrue(user1.proxy() != address(0));
         assertTrue(user2.proxy() != address(0));
