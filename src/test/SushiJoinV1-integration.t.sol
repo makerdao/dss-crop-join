@@ -220,9 +220,9 @@ contract SushiV1IntegrationTest is TestBase {
         baseJoin.setImplementation(address(new SushiJoinImp(address(vat), ilk, address(pair), address(sushi), address(masterchef), pid, migrator, address(timelock))));
         join = SushiJoinImp(address(baseJoin));
         join.initApproval();
-        Cropper baseManager = new Cropper();
-        baseManager.setImplementation(address(new CropperImp(address(vat))));
-        cropper = CropperImp(address(baseManager));
+        Cropper baseCropper = new Cropper();
+        baseCropper.setImplementation(address(new CropperImp(address(vat))));
+        cropper = CropperImp(address(baseCropper));
         baseJoin.rely(address(cropper));
         baseJoin.deny(address(this));    // Only access should be through cropper
         assertEq(join.migrator(), migrator);

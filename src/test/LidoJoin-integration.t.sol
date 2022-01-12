@@ -182,9 +182,9 @@ contract LidoIntegrationTest is TestBase {
         baseJoin.setImplementation(address(new SynthetixJoinImp(address(vat), ilk, address(gem), address(bonus), address(pool))));
         join = SynthetixJoinImp(address(baseJoin));
         join.init();
-        Cropper baseManager = new Cropper();
-        baseManager.setImplementation(address(new CropperImp(address(vat))));
-        cropper = CropperImp(address(baseManager));
+        Cropper baseCropper = new Cropper();
+        baseCropper.setImplementation(address(new CropperImp(address(vat))));
+        cropper = CropperImp(address(baseCropper));
         baseJoin.rely(address(cropper));
         baseJoin.deny(address(this));    // Only access should be through cropper
         vat.rely(address(baseJoin));
