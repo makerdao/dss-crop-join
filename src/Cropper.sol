@@ -52,7 +52,7 @@ contract UrnProxy {
     }
 }
 
-contract CropManager {
+contract Cropper {
     address public implementation;
     mapping (address => uint256) public wards;
 
@@ -61,7 +61,7 @@ contract CropManager {
     event SetImplementation(address indexed);
 
     modifier auth {
-        require(wards[msg.sender] == 1, "CropManager/not-authed");
+        require(wards[msg.sender] == 1, "Cropper/not-authed");
         _;
     }
 
@@ -103,7 +103,7 @@ contract CropManager {
     }
 }
 
-contract CropManagerImp {
+contract CropperImp {
     bytes32 slot0;
     bytes32 slot1;
     mapping (address => address) public proxy; // UrnProxy per user
@@ -118,7 +118,7 @@ contract CropManagerImp {
     }
 
     modifier allowed(address usr) {
-        require(msg.sender == usr || can[usr][msg.sender] == 1, "CropManager/not-allowed");
+        require(msg.sender == usr || can[usr][msg.sender] == 1, "Cropper/not-allowed");
         _;
     }
 
@@ -140,7 +140,7 @@ contract CropManagerImp {
     }
 
     function join(address crop, address usr, uint256 val) external {
-        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
+        require(VatLike(vat).wards(crop) == 1, "Cropper/crop-not-authorized");
 
         GemLike gem = CropLike(crop).gem();
         gem.transferFrom(msg.sender, address(this), val);
@@ -149,38 +149,38 @@ contract CropManagerImp {
     }
 
     function exit(address crop, address usr, uint256 val) external {
-        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
+        require(VatLike(vat).wards(crop) == 1, "Cropper/crop-not-authorized");
 
         address urp = proxy[msg.sender];
-        require(urp != address(0), "CropManager/non-existing-urp");
+        require(urp != address(0), "Cropper/non-existing-urp");
         CropLike(crop).exit(urp, usr, val);
     }
 
     function flee(address crop) external {
-        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
+        require(VatLike(vat).wards(crop) == 1, "Cropper/crop-not-authorized");
 
         address urp = proxy[msg.sender];
-        require(urp != address(0), "CropManager/non-existing-urp");
+        require(urp != address(0), "Cropper/non-existing-urp");
         CropLike(crop).flee(urp, msg.sender);
     }
 
     function move(address u, address dst, uint256 rad) external allowed(u) {
         address urp = proxy[u];
-        require(urp != address(0), "CropManager/non-existing-urp");
+        require(urp != address(0), "Cropper/non-existing-urp");
 
         VatLike(vat).move(urp, dst, rad);
     }
 
     function frob(bytes32 ilk, address u, address v, address w, int256 dink, int256 dart) external allowed(u) allowed(w) {
         // The u == v requirement can never be relaxed as otherwise tack() can lose track of the rewards
-        require(u == v, "CropManager/not-matching");
+        require(u == v, "Cropper/not-matching");
         address urp = getOrCreateProxy(u);
 
         VatLike(vat).frob(ilk, urp, urp, w, dink, dart);
     }
 
     function flux(address crop, address src, address dst, uint256 wad) external allowed(src) {
-        require(VatLike(vat).wards(crop) == 1, "CropManager/crop-not-authorized");
+        require(VatLike(vat).wards(crop) == 1, "Cropper/crop-not-authorized");
 
         address surp = getOrCreateProxy(src);
         address durp = getOrCreateProxy(dst);
@@ -193,7 +193,7 @@ contract CropManagerImp {
         // NOTE - this is not permissioned so be careful with what is done here
         // Send any outstanding rewards to usr and tack to the clipper
         address urp = proxy[usr];
-        require(urp != address(0), "CropManager/non-existing-urp");
+        require(urp != address(0), "Cropper/non-existing-urp");
         CropLike(crop).join(urp, usr, 0);
         CropLike(crop).tack(urp, msg.sender, wad);
     }
@@ -204,14 +204,14 @@ contract CropManagerImp {
     }
 
     function quit(bytes32 ilk, address u, address dst) external allowed(u) allowed(dst) {
-        require(VatLike(vat).live() == 0, "CropManager/vat-still-live");
+        require(VatLike(vat).live() == 0, "Cropper/vat-still-live");
 
         address urp = proxy[u];
-        require(urp != address(0), "CropManager/non-existing-urp");
+        require(urp != address(0), "Cropper/non-existing-urp");
 
         (uint256 ink, uint256 art) = VatLike(vat).urns(ilk, urp);
-        require(int256(ink) >= 0, "CropManager/overflow");
-        require(int256(art) >= 0, "CropManager/overflow");
+        require(int256(ink) >= 0, "Cropper/overflow");
+        require(int256(art) >= 0, "Cropper/overflow");
         VatLike(vat).fork(
             ilk,
             urp,

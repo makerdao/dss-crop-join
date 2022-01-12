@@ -18,8 +18,8 @@ pragma solidity 0.6.12;
 import {ProxyManagerClipper} from "proxy-manager-clipper/ProxyManagerClipper.sol";
 import "./TestBase.sol";
 import {CropJoin, CropJoinImp} from "../CropJoin.sol";
-import {CropManager, CropManagerImp} from "../CropManager.sol";
-import {Usr} from './CropManager-unit.t.sol';
+import {Cropper, CropperImp} from "../Cropper.sol";
+import {Usr} from './Cropper-unit.t.sol';
 
 interface VatLike {
     function wards(address) external view returns (uint256);
@@ -108,7 +108,7 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
     Token gem;
     Token bonus;
     CropJoinImp join;
-    CropManagerImp manager;
+    CropperImp cropper;
     ProxyManagerClipper clipper;
     Pip pip;
     Abacus abacus;
@@ -149,17 +149,17 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
         CropJoin baseJoin = new CropJoin();
         baseJoin.setImplementation(address(new CropJoinImp(address(vat), ILK, address(gem), address(bonus))));
         join = CropJoinImp(address(baseJoin));
-        CropManager base = new CropManager();
-        base.setImplementation(address(new CropManagerImp(address(vat))));
-        manager = CropManagerImp(address(base));
-        clipper = new ProxyManagerClipper(address(vat), address(spotter), address(dog), address(join), address(manager));
+        Cropper base = new Cropper();
+        base.setImplementation(address(new CropperImp(address(vat))));
+        cropper = CropperImp(address(base));
+        clipper = new ProxyManagerClipper(address(vat), address(spotter), address(dog), address(join), address(cropper));
 
         // Auth setup
         clipper.rely(address(dog));
         dog.rely(address(clipper));
         vat.rely(address(join));
-        baseJoin.rely(address(manager));
-        baseJoin.deny(address(this));    // Only access should be through manager
+        baseJoin.rely(address(cropper));
+        baseJoin.deny(address(this));    // Only access should be through cropper
 
         // Initialize GEM-A in the Dog
         dog.file(ILK, "hole", 10**6 * RAD);
@@ -173,9 +173,9 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
         clipper.file("calc", address(abacus));
 
         // Create Vault
-        usr = new Usr(join, manager);
+        usr = new Usr(join, cropper);
         gem.transfer(address(usr), 10**3 * WAD);
-        usr.approve(address(gem), address(manager));
+        usr.approve(address(gem), address(cropper));
         usr.join(10**3 * WAD);
         usr.frob(int256(10**3 * WAD), int256(500 * WAD));  // Draw maximum possible debt
 
@@ -184,9 +184,9 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
 
         // Draw some DAI for this contract for bidding on auctions.
         // This conveniently provisions an UrnProxy for the test contract as well.
-        gem.approve(address(manager), uint256(-1));
-        manager.join(address(join), address(this), 10**4 * WAD);
-        manager.frob(ILK, address(this), address(this), address(this), int256(10**4 * WAD), int256(1000 * WAD));
+        gem.approve(address(cropper), uint256(-1));
+        cropper.join(address(join), address(this), 10**4 * WAD);
+        cropper.frob(ILK, address(this), address(this), address(this), int256(10**4 * WAD), int256(1000 * WAD));
 
         // Hope the clipper so we can bid.
         vat.hope(address(clipper));
@@ -204,7 +204,7 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
     }
 
     function test_take_all() public {
-        address urp = manager.proxy(address(this));
+        address urp = cropper.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
@@ -236,13 +236,13 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
         assertEq(join.stake(urp), add(10**3 * WAD, initialStake));
 
         // We can exit, withdrawing the full reward (10^4 bonus tokens), without needing to tack.
-        manager.exit(address(join), address(this), 10**3 * WAD);
+        cropper.exit(address(join), address(this), 10**3 * WAD);
         assertEq(join.stake(urp), initialStake);
         assertEq(gem.balanceOf(address(this)), add(initialGemBal, 10**3 * WAD));
     }
 
     function test_take_return_collateral() public {
-        address urp = manager.proxy(address(this));
+        address urp = cropper.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
@@ -279,7 +279,7 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
         assertEq(usr.stake(), collateralReturned);
 
         // We can exit, withdrawing the appropriate fraction of the reward, without needing to tack.
-        manager.exit(address(join), address(this), expectedPurchaseSize);
+        cropper.exit(address(join), address(this), expectedPurchaseSize);
         assertEq(join.stake(urp), initialStake);
         assertEq(gem.balanceOf(address(this)), add(initialGemBal, expectedPurchaseSize));
 
@@ -290,7 +290,7 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
     }
 
     function test_yank() public {
-        address urp = manager.proxy(address(this));
+        address urp = cropper.proxy(address(this));
         uint256 initialStake    = join.stake(urp);
         uint256 initialGemBal   = gem.balanceOf(address(this));
 
@@ -306,7 +306,7 @@ contract ProxyManagerClipperIntegrationTest is TestBase {
         vat.flux(ILK, address(this), urp, 10**3 * WAD);
         join.tack(address(this), urp, 10**3 * WAD);
         assertEq(join.stake(urp), add(10**3 * WAD, initialStake));
-        manager.exit(address(join), address(this), 10**3 * WAD);
+        cropper.exit(address(join), address(this), 10**3 * WAD);
         assertEq(join.stake(urp), initialStake);
         assertEq(gem.balanceOf(address(this)), add(initialGemBal, 10**3 * WAD));
     }

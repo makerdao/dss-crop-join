@@ -18,39 +18,39 @@ pragma solidity 0.6.12;
 
 import "./TestBase.sol";
 import {CropJoin, CropJoinImp} from "../CropJoin.sol";
-import "../CropManager.sol";
+import "../Cropper.sol";
 import {MockVat} from "./CropJoin-unit.t.sol";
 
 contract Usr {
 
     CropJoinImp    adapter;
-    CropManagerImp manager;
+    CropperImp cropper;
 
-    constructor(CropJoinImp adapter_, CropManagerImp manager_) public {
+    constructor(CropJoinImp adapter_, CropperImp cropper_) public {
         adapter = adapter_;
-        manager = manager_;
+        cropper = cropper_;
     }
 
     function approve(address coin, address usr) public {
         Token(coin).approve(usr, uint256(-1));
     }
     function join(address usr, uint256 wad) public {
-        manager.join(address(adapter), usr, wad);
+        cropper.join(address(adapter), usr, wad);
     }
     function join(uint256 wad) public {
-        manager.join(address(adapter), address(this), wad);
+        cropper.join(address(adapter), address(this), wad);
     }
     function exit(address usr, uint256 wad) public {
-        manager.exit(address(adapter), usr, wad);
+        cropper.exit(address(adapter), usr, wad);
     }
     function exit(uint256 wad) public {
-        manager.exit(address(adapter), address(this), wad);
+        cropper.exit(address(adapter), address(this), wad);
     }
     function move(address u, address dst, uint256 rad) public {
-        manager.move(u, dst, rad);
+        cropper.move(u, dst, rad);
     }
     function proxy() public view returns (address) {
-        return manager.proxy(address(this));
+        return cropper.proxy(address(this));
     }
     function crops() public view returns (uint256) {
         return adapter.crops(proxy());
@@ -68,40 +68,40 @@ contract Usr {
         return adapter.vat().dai(address(this));
     }
     function hope(address usr) public {
-        manager.hope(address(usr));
+        cropper.hope(address(usr));
     }
     function nope(address usr) public {
-        manager.nope(address(usr));
+        cropper.nope(address(usr));
     }
     function reap() public {
-        manager.join(address(adapter), address(this), 0);
+        cropper.join(address(adapter), address(this), 0);
     }
     function flee() public {
-        manager.flee(address(adapter));
+        cropper.flee(address(adapter));
     }
     function frob(int256 dink, int256 dart) public {
-        manager.frob(adapter.ilk(), address(this), address(this), address(this), dink, dart);
+        cropper.frob(adapter.ilk(), address(this), address(this), address(this), dink, dart);
     }
     function frob(address u, address v, address w, int256 dink, int256 dart) public {
-        manager.frob(adapter.ilk(), u, v, w, dink, dart);
+        cropper.frob(adapter.ilk(), u, v, w, dink, dart);
     }
     function frobDirect(address u, address v, address w, int256 dink, int256 dart) public {
-        VatLike(manager.vat()).frob(adapter.ilk(), u, v, w, dink, dart);
+        VatLike(cropper.vat()).frob(adapter.ilk(), u, v, w, dink, dart);
     }
     function moveDirect(address usr, uint256 rad) public {
-        VatLike(manager.vat()).move(address(this), usr, rad);
+        VatLike(cropper.vat()).move(address(this), usr, rad);
     }
     function flux(address src, address dst, uint256 wad) public {
-        manager.flux(address(adapter), src, dst, wad);
+        cropper.flux(address(adapter), src, dst, wad);
     }
     function fluxDirect(address src, address dst, uint256 wad) public {
-        VatLike(manager.vat()).flux(adapter.ilk(), src, dst, wad);
+        VatLike(cropper.vat()).flux(adapter.ilk(), src, dst, wad);
     }
     function quit() public {
-        manager.quit(adapter.ilk(), address(this), address(this));
+        cropper.quit(adapter.ilk(), address(this), address(this));
     }
     function quit(address u, address dst) public {
-        manager.quit(adapter.ilk(), u, dst);
+        cropper.quit(adapter.ilk(), u, dst);
     }
 
     function try_call(address addr, bytes calldata data) external returns (bool) {
@@ -127,11 +127,11 @@ contract Usr {
     function can_exit(address usr, uint256 val) public returns (bool) {
         bytes memory call = abi.encodeWithSignature
             ("exit(address,address,uint256)", address(adapter), usr, val);
-        return can_call(address(manager), call);
+        return can_call(address(cropper), call);
     }
 }
 
-contract CropManagerTest is TestBase {
+contract CropperTest is TestBase {
 
     Token               gem;
     Token               bonus;
@@ -139,7 +139,7 @@ contract CropManagerTest is TestBase {
     address             self;
     bytes32             ilk = "TOKEN-A";
     CropJoinImp         join;
-    CropManagerImp      manager;
+    CropperImp          cropper;
 
     function setUp() public virtual {
         self = address(this);
@@ -151,26 +151,26 @@ contract CropManagerTest is TestBase {
         baseJoin.setImplementation(address(new CropJoinImp(address(vat), ilk, address(gem), address(bonus))));
         join = CropJoinImp(address(baseJoin));
 
-        CropManager base = new CropManager();
-        base.setImplementation(address(new CropManagerImp(address(vat))));
-        manager = CropManagerImp(address(base));
+        Cropper base = new Cropper();
+        base.setImplementation(address(new CropperImp(address(vat))));
+        cropper = CropperImp(address(base));
 
-        baseJoin.rely(address(manager));
-        baseJoin.deny(address(this));    // Only access should be through manager
+        baseJoin.rely(address(cropper));
+        baseJoin.deny(address(this));    // Only access should be through cropper
     }
 
     function init_user() internal returns (Usr a, Usr b) {
         return init_user(200 * 1e6);
     }
     function init_user(uint256 cash) internal returns (Usr a, Usr b) {
-        a = new Usr(join, manager);
-        b = new Usr(join, manager);
+        a = new Usr(join, cropper);
+        b = new Usr(join, cropper);
 
         gem.transfer(address(a), cash);
         gem.transfer(address(b), cash);
 
-        a.approve(address(gem), address(manager));
-        b.approve(address(gem), address(manager));
+        a.approve(address(gem), address(cropper));
+        b.approve(address(gem), address(cropper));
     }
 
     function reward(address usr, uint256 wad) internal virtual {
@@ -178,18 +178,18 @@ contract CropManagerTest is TestBase {
     }
 
     function test_make_proxy() public {
-        assertEq(manager.proxy(address(this)), address(0));
-        manager.join(address(join), address(this), 0);
-        assertTrue(manager.proxy(address(this)) != address(0));
+        assertEq(cropper.proxy(address(this)), address(0));
+        cropper.join(address(join), address(this), 0);
+        assertTrue(cropper.proxy(address(this)) != address(0));
     }
 
     function test_hope_nope() public {
         (Usr a, Usr b) = init_user();
-        assertEq(manager.can(address(b), address(a)), 0);
+        assertEq(cropper.can(address(b), address(a)), 0);
         b.hope(address(a));
-        assertEq(manager.can(address(b), address(a)), 1);
+        assertEq(cropper.can(address(b), address(a)), 1);
         b.nope(address(a));
-        assertEq(manager.can(address(b), address(a)), 0);
+        assertEq(cropper.can(address(b), address(a)), 0);
     }
 
     function test_join_exit_self() public {
@@ -482,7 +482,7 @@ contract CropManagerTest is TestBase {
         a.join(100 * 1e6);
         a.frob(100 * 1e18, 2 * 1e18);
         assertEq(vat.dai(address(a)), 2 * 1e45);
-        manager.getOrCreateProxy(address(a));
+        cropper.getOrCreateProxy(address(a));
         a.moveDirect(a.proxy(), 2 * 1e45);
         assertEq(vat.dai(a.proxy()), 2 * 1e45);
 
@@ -496,7 +496,7 @@ contract CropManagerTest is TestBase {
         a.join(100 * 1e6);
         a.frob(100 * 1e18, 2 * 1e18);
         assertEq(vat.dai(address(a)), 2 * 1e45);
-        manager.getOrCreateProxy(address(a));
+        cropper.getOrCreateProxy(address(a));
         a.moveDirect(a.proxy(), 2 * 1e45);
         assertEq(vat.dai(a.proxy()), 2 * 1e45);
 
@@ -511,7 +511,7 @@ contract CropManagerTest is TestBase {
         a.join(100 * 1e6);
         a.frob(100 * 1e18, 2 * 1e18);
         assertEq(vat.dai(address(a)), 2 * 1e45);
-        manager.getOrCreateProxy(address(a));
+        cropper.getOrCreateProxy(address(a));
         a.moveDirect(a.proxy(), 2 * 1e45);
         assertEq(vat.dai(a.proxy()), 2 * 1e45);
 
