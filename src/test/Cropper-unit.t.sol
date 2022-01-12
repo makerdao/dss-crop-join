@@ -23,8 +23,8 @@ import {MockVat} from "./CropJoin-unit.t.sol";
 
 contract Usr {
 
-    CropJoinImp    adapter;
-    CropperImp cropper;
+    CropJoinImp adapter;
+    CropperImp  cropper;
 
     constructor(CropJoinImp adapter_, CropperImp cropper_) public {
         adapter = adapter_;
