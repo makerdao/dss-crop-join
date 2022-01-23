@@ -97,11 +97,11 @@ contract CropJoinImp {
     uint256     public immutable dec;    // gem decimals
     ERC20       public immutable bonus;  // rewards token
 
-    uint256     public share;  // crops per gem    [ray]
+    uint256     public share;  // crops per gem    [bonus decimals * ray / wad]
     uint256     public total;  // total gems       [wad]
-    uint256     public stock;  // crop balance     [wad]
+    uint256     public stock;  // crop balance     [bonus decimals]
 
-    mapping (address => uint256) public crops; // crops per user  [wad]
+    mapping (address => uint256) public crops; // crops per user  [bonus decimals]
     mapping (address => uint256) public stake; // gems per user   [wad]
 
     uint256 immutable internal to18ConversionFactor;
