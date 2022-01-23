@@ -111,6 +111,7 @@ contract CropperImp {
 
     event Hope(address indexed from, address indexed to);
     event Nope(address indexed from, address indexed to);
+    event NewProxy(address indexed usr, address indexed urp);
 
     address public immutable vat;
     constructor(address vat_) public {
@@ -136,6 +137,7 @@ contract CropperImp {
         urp = proxy[usr];
         if (urp == address(0)) {
             urp = proxy[usr] = address(new UrnProxy(address(vat), usr));
+            emit NewProxy(usr, urp);
         }
     }
 
