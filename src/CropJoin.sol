@@ -97,20 +97,20 @@ contract CropJoinImp {
     uint256     public immutable dec;    // gem decimals
     ERC20       public immutable bonus;  // rewards token
 
-    uint256     public share;  // crops per gem    [ray]
+    uint256     public share;  // crops per gem    [bonus decimals * ray / wad]
     uint256     public total;  // total gems       [wad]
-    uint256     public stock;  // crop balance     [wad]
+    uint256     public stock;  // crop balance     [bonus decimals]
 
-    mapping (address => uint256) public crops; // crops per user  [wad]
+    mapping (address => uint256) public crops; // crops per user  [bonus decimals]
     mapping (address => uint256) public stake; // gems per user   [wad]
 
     uint256 immutable internal to18ConversionFactor;
     uint256 immutable internal toGemConversionFactor;
 
     // --- Events ---
-    event Join(uint256 val);
-    event Exit(uint256 val);
-    event Flee();
+    event Join(address indexed urn, address indexed usr, uint256 val);
+    event Exit(address indexed urn, address indexed usr, uint256 val);
+    event Flee(address indexed urn, address indexed usr, uint256 val);
     event Tack(address indexed src, address indexed dst, uint256 wad);
 
     modifier auth {
@@ -206,7 +206,7 @@ contract CropJoinImp {
             stake[urn] = add(stake[urn], wad);
         }
         crops[urn] = rmulup(stake[urn], share);
-        emit Join(val);
+        emit Join(urn, usr, val);
     }
 
     function exit(address urn, address usr, uint256 val) public auth virtual {
@@ -225,7 +225,7 @@ contract CropJoinImp {
             stake[urn] = sub(stake[urn], wad);
         }
         crops[urn] = rmulup(stake[urn], share);
-        emit Exit(val);
+        emit Exit(urn, usr, val);
     }
 
     function flee(address urn, address usr) public auth virtual {
@@ -240,7 +240,7 @@ contract CropJoinImp {
         stake[urn] = sub(stake[urn], wad);
         crops[urn] = rmulup(stake[urn], share);
 
-        emit Flee();
+        emit Flee(urn, usr, val);
     }
 
     function tack(address src, address dst, uint256 wad) public {

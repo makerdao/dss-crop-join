@@ -47,8 +47,8 @@ to exit collateral without having the appropriate `stake`, so it isn't
 possible to game rewards through e.g. `join($$$); flux(me, me2, $$$); flee($$$)`.
 
 However, recipients of auction proceeds will need the appropriate
-`stake` if they wish to exit.  The winner of a collateral auction claims
-their collateral via `flip.deal`. This increases their collateral
+`stake` if they wish to exit.  The winner of a collateral auction receives
+their collateral via `clip.take`. This increases their collateral
 balance, but not their `stake`. `tack` allows this stake to be acquired,
 from other users that have an excess of stake.
 
@@ -61,7 +61,7 @@ It isn't strictly necessary to alter the collateral auction contract, as
 
 Then rewards will continue to accumulate throughout the auction and will
 be distributed appropriately to the winner and the CDP owner, with the winner
-able to reap their rewards following `deal`.
+able to reap their rewards following `take`.
 
 
 ### Terms

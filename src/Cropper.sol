@@ -111,6 +111,7 @@ contract CropperImp {
 
     event Hope(address indexed from, address indexed to);
     event Nope(address indexed from, address indexed to);
+    event NewProxy(address indexed usr, address indexed urp);
 
     address public immutable vat;
     constructor(address vat_) public {
@@ -136,6 +137,7 @@ contract CropperImp {
         urp = proxy[usr];
         if (urp == address(0)) {
             urp = proxy[usr] = address(new UrnProxy(address(vat), usr));
+            emit NewProxy(usr, urp);
         }
     }
 
@@ -182,7 +184,8 @@ contract CropperImp {
     function flux(address crop, address src, address dst, uint256 wad) external allowed(src) {
         require(VatLike(vat).wards(crop) == 1, "Cropper/crop-not-authorized");
 
-        address surp = getOrCreateProxy(src);
+        address surp = proxy[src];
+        require(surp != address(0), "Cropper/non-existing-surp");
         address durp = getOrCreateProxy(dst);
 
         VatLike(vat).flux(CropLike(crop).ilk(), surp, durp, wad);
