@@ -10,3 +10,6 @@
 [submodule "lib/proxy-registry"]
 	path = lib/proxy-registry
 	url = https://github.com/makerdao/proxy-registry
+[submodule "lib/dss-deploy"]
+	path = lib/dss-deploy
+	url = https://github.com/makerdao/dss-deploy
