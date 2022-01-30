@@ -75,3 +75,9 @@ able to reap their rewards following `take`.
 - `stock`: last recorded balance of reward token
 - `share`: accumulated `bonus` per `gem`
 - `crops`: accumulated `bonus` per `gem` per user
+
+### Proxy Actions
+
+This repository also includes proxy action functions, located in the DssProxyActionsCropper and DssProxyActionsEndCropper contracts. They are to be used via ds-proxy, similarly to [dss-proxy-actions](https://github.com/makerdao/dss-proxy-actions).
+As opposed to the original actions, these functions interact with the Cropper and are not based on dss-cdp-manager as a CDP registry.  
+These proxy actions assume net asset per share (`CropJoin.nav()`) is 1.

@@ -25,18 +25,15 @@ interface GemLike {
     function transferFrom(address, address, uint256) external;
     function deposit() external payable;
     function withdraw(uint256) external;
+    function balanceOf(address) external view returns (uint256);
 }
 
-interface CharterLike {
+interface CropperLike {
     function getOrCreateProxy(address) external returns (address);
     function join(address, address, uint256) external;
     function exit(address, address, uint256) external;
-    function roll(bytes32, bytes32, address, address, uint256) external;
     function frob(bytes32, address, address, address, int256, int256) external;
     function quit(bytes32, address, address) external;
-    function gate(bytes32) external view returns (uint256);
-    function Nib(bytes32) external view returns (uint256);
-    function nib(bytes32, address) external view returns (uint256);
 }
 
 interface VatLike {
@@ -53,6 +50,7 @@ interface GemJoinLike {
     function dec() external returns (uint256);
     function gem() external returns (GemLike);
     function ilk() external returns (bytes32);
+    function bonus() external returns (GemLike);
 }
 
 interface DaiJoinLike {
@@ -92,12 +90,12 @@ contract Common {
     uint256 constant WAD = 10 ** 18;
     uint256 constant RAY = 10 ** 27;
     address immutable public vat;
-    address immutable public charter;
+    address immutable public cropper;
     address immutable public cdpRegistry;
 
-    constructor(address vat_, address charter_, address cdpRegistry_) public {
+    constructor(address vat_, address cropper_, address cdpRegistry_) public {
         vat = vat_;
-        charter = charter_;
+        cropper = cropper_;
         cdpRegistry = cdpRegistry_;
     }
 
@@ -120,9 +118,9 @@ contract Common {
     }
 }
 
-contract DssProxyActionsCharter is Common {
+contract DssProxyActionsCropper is Common {
 
-    constructor(address vat_, address charter_, address cdpRegistry_) public Common(vat_, charter_, cdpRegistry_) {}
+    constructor(address vat_, address cropper_, address cdpRegistry_) public Common(vat_, cropper_, cdpRegistry_) {}
 
     // Internal functions
 
@@ -150,28 +148,21 @@ contract DssProxyActionsCharter is Common {
         address u,
         bytes32 ilk,
         uint256 wad
-    )  internal returns (int256 dart) {
+    ) internal returns (int256 dart) {
         // Updates stability fee rate
         uint256 rate = JugLike(jug).drip(ilk);
 
         // Gets DAI balance of the urn in the vat
         uint256 dai = VatLike(vat).dai(u);
 
-        // If there was already enough DAI in the vat balance,
-        //    just exits it without adding more debt
+        // If there was already enough DAI in the vat balance, just exits it without adding more debt
         uint256 rad = _mul(wad, RAY);
         if (dai < rad) {
-            uint256 netToDraw = rad - dai; // dai < rad
-
-            uint256 nib = (CharterLike(charter).gate(ilk) == 1) ?
-                CharterLike(charter).nib(ilk, u) :
-                CharterLike(charter).Nib(ilk);
-
+            uint256 toDraw = rad - dai; // dai < rad
             // Calculates the needed dart so together with the existing dai in the vat is enough to exit wad amount of DAI tokens
-            dart = _toInt256(_mul(netToDraw, WAD) / _sub(_mul(rate, WAD), _mul(rate, nib))); // wad
-            uint256 dtab = _mul(uint256(dart), rate);
-            // This is needed due lack of precision, it might need to sum an extra dart wei
-            dart = _sub(dtab, _mul(dtab, nib) / WAD) < netToDraw ? dart + 1 : dart;
+            dart = _toInt256(toDraw / rate);
+            // This is needed due lack of precision. It might need to sum an extra dart wei (for the given DAI wad amount)
+            dart = _mul(uint256(dart), rate) < toDraw ? dart + 1 : dart;
         }
     }
 
@@ -183,7 +174,7 @@ contract DssProxyActionsCharter is Common {
         // Gets actual rate from the vat
         (, uint256 rate,,,) = VatLike(vat).ilks(ilk);
         // Gets actual art value of the urn
-        (, uint256 art) = VatLike(vat).urns(ilk, CharterLike(charter).getOrCreateProxy(u));
+        (, uint256 art) = VatLike(vat).urns(ilk, CropperLike(cropper).getOrCreateProxy(u));
 
         // Uses the whole dai balance in the vat to reduce the debt
         dart = _toInt256(dai / rate);
@@ -222,7 +213,7 @@ contract DssProxyActionsCharter is Common {
         int256 dink,
         int256 dart
     ) internal {
-        CharterLike(charter).frob(ilk, u, u, u, dink, dart);
+        CropperLike(cropper).frob(ilk, u, u, u, dink, dart);
     }
 
     function _ethJoin_join(address ethJoin, address u) internal {
@@ -230,9 +221,9 @@ contract DssProxyActionsCharter is Common {
         // Wraps ETH in WETH
         gem.deposit{value: msg.value}();
         // Approves adapter to take the WETH amount
-        gem.approve(charter, msg.value);
+        gem.approve(cropper, msg.value);
         // Joins WETH collateral into the vat
-        CharterLike(charter).join(ethJoin, u, msg.value);
+        CropperLike(cropper).join(ethJoin, u, msg.value);
     }
 
     function _gemJoin_join(address gemJoin, address u, uint256 amt) internal {
@@ -240,9 +231,9 @@ contract DssProxyActionsCharter is Common {
         // Gets token from the user's wallet
         gem.transferFrom(msg.sender, address(this), amt);
         // Approves adapter to take the token amount
-        gem.approve(charter, amt);
+        gem.approve(cropper, amt);
         // Joins token collateral into the vat
-        CharterLike(charter).join(gemJoin, u, amt);
+        CropperLike(cropper).join(gemJoin, u, amt);
     }
 
     // Public functions
@@ -276,7 +267,7 @@ contract DssProxyActionsCharter is Common {
         uint256 cdp,
         address dst
     ) external {
-        CharterLike(charter).quit(
+        CropperLike(cropper).quit(
             CdpRegistryLike(cdpRegistry).ilks(cdp),
             CdpRegistryLike(cdpRegistry).owns(cdp),
             dst
@@ -321,7 +312,7 @@ contract DssProxyActionsCharter is Common {
             0
         );
         // Exits WETH amount to proxy address as a token
-        CharterLike(charter).exit(ethJoin, address(this), wad);
+        CropperLike(cropper).exit(ethJoin, address(this), wad);
         // Converts WETH to ETH
         GemJoinLike(ethJoin).gem().withdraw(wad);
         // Sends ETH back to the user's wallet
@@ -340,8 +331,10 @@ contract DssProxyActionsCharter is Common {
             -_toInt256(_convertTo18(gemJoin, amt)),
             0
         );
+        // Exits token amount to proxy address as a token
+        CropperLike(cropper).exit(gemJoin, address(this), amt);
         // Exits token amount to the user's wallet as a token
-        CharterLike(charter).exit(gemJoin, msg.sender, amt);
+        GemJoinLike(gemJoin).gem().transfer(msg.sender, amt);
     }
 
     function exitETH(
@@ -353,7 +346,7 @@ contract DssProxyActionsCharter is Common {
         require(CdpRegistryLike(cdpRegistry).ilks(cdp) == GemJoinLike(ethJoin).ilk(), "wrong-ilk");
 
         // Exits WETH amount to proxy address as a token
-        CharterLike(charter).exit(ethJoin, address(this), wad);
+        CropperLike(cropper).exit(ethJoin, address(this), wad);
         // Converts WETH to ETH
         GemJoinLike(ethJoin).gem().withdraw(wad);
         // Sends ETH back to the user's wallet
@@ -368,8 +361,10 @@ contract DssProxyActionsCharter is Common {
         require(CdpRegistryLike(cdpRegistry).owns(cdp) == address(this), "wrong-cdp");
         require(CdpRegistryLike(cdpRegistry).ilks(cdp) == GemJoinLike(gemJoin).ilk(), "wrong-ilk");
 
+        // Exits token amount to proxy address as a token
+        CropperLike(cropper).exit(gemJoin, address(this), amt);
         // Exits token amount to the user's wallet as a token
-        CharterLike(charter).exit(gemJoin, msg.sender, amt);
+        GemJoinLike(gemJoin).gem().transfer(msg.sender, amt);
     }
 
     function draw(
@@ -401,8 +396,8 @@ contract DssProxyActionsCharter is Common {
 
         // Joins DAI amount into the vat
         daiJoin_join(daiJoin, owner, wad);
-        // Allows charter to access to proxy's DAI balance in the vat
-        VatLike(vat).hope(charter);
+        // Allows cropper to access to proxy's DAI balance in the vat
+        VatLike(vat).hope(cropper);
         // Paybacks debt to the CDP
         _frob(
             ilk,
@@ -414,8 +409,8 @@ contract DssProxyActionsCharter is Common {
                 ilk
             )
         );
-        // Denies charter to access to proxy's DAI balance in the vat after execution
-        VatLike(vat).nope(charter);
+        // Denies cropper to access to proxy's DAI balance in the vat after execution
+        VatLike(vat).nope(cropper);
     }
 
     function wipeAll(
@@ -425,17 +420,17 @@ contract DssProxyActionsCharter is Common {
         address owner = CdpRegistryLike(cdpRegistry).owns(cdp);
         bytes32 ilk = CdpRegistryLike(cdpRegistry).ilks(cdp);
 
-        address urp = CharterLike(charter).getOrCreateProxy(owner);
+        address urp = CropperLike(cropper).getOrCreateProxy(owner);
         (, uint256 art) = VatLike(vat).urns(ilk, urp);
 
         // Joins DAI amount into the vat
         daiJoin_join(daiJoin, owner, _getWipeAllWad(owner, urp, ilk));
-        // Allows charter to access to proxy's DAI balance in the vat
-        VatLike(vat).hope(charter);
+        // Allows cropper to access to proxy's DAI balance in the vat
+        VatLike(vat).hope(cropper);
         // Paybacks debt to the CDP
         _frob(ilk, owner, 0, -_toInt256(art));
-        // Denies charter to access to proxy's DAI balance in the vat after execution
-        VatLike(vat).nope(charter);
+        // Denies cropper to access to proxy's DAI balance in the vat after execution
+        VatLike(vat).nope(cropper);
     }
 
     function lockETHAndDraw(
@@ -538,8 +533,8 @@ contract DssProxyActionsCharter is Common {
 
         // Joins DAI amount into the vat
         daiJoin_join(daiJoin, owner, wadD);
-        // Allows charter to access to proxy's DAI balance in the vat
-        VatLike(vat).hope(charter);
+        // Allows cropper to access to proxy's DAI balance in the vat
+        VatLike(vat).hope(cropper);
         // Paybacks debt to the CDP and unlocks WETH amount from it
         _frob(
             ilk,
@@ -551,10 +546,10 @@ contract DssProxyActionsCharter is Common {
                 ilk
             )
         );
-        // Denies charter to access to proxy's DAI balance in the vat after execution
-        VatLike(vat).nope(charter);
+        // Denies cropper to access to proxy's DAI balance in the vat after execution
+        VatLike(vat).nope(cropper);
         // Exits WETH amount to proxy address as a token
-        CharterLike(charter).exit(ethJoin, address(this), wadC);
+        CropperLike(cropper).exit(ethJoin, address(this), wadC);
         // Converts WETH to ETH
         GemJoinLike(ethJoin).gem().withdraw(wadC);
         // Sends ETH back to the user's wallet
@@ -570,19 +565,19 @@ contract DssProxyActionsCharter is Common {
         address owner = CdpRegistryLike(cdpRegistry).owns(cdp);
         bytes32 ilk = CdpRegistryLike(cdpRegistry).ilks(cdp);
 
-        address urp = CharterLike(charter).getOrCreateProxy(owner);
+        address urp = CropperLike(cropper).getOrCreateProxy(owner);
         (, uint256 art) = VatLike(vat).urns(ilk, urp);
 
         // Joins DAI amount into the vat
         daiJoin_join(daiJoin, owner, _getWipeAllWad(owner, urp, ilk));
-        // Allows charter to access to proxy's DAI balance in the vat
-        VatLike(vat).hope(charter);
+        // Allows cropper to access to proxy's DAI balance in the vat
+        VatLike(vat).hope(cropper);
         // Paybacks debt to the CDP and unlocks WETH amount from it
         _frob(ilk, owner, -_toInt256(wadC), -_toInt256(art));
-        // Denies charter to access to proxy's DAI balance in the vat after execution
-        VatLike(vat).nope(charter);
+        // Denies cropper to access to proxy's DAI balance in the vat after execution
+        VatLike(vat).nope(cropper);
         // Exits WETH amount to proxy address as a token
-        CharterLike(charter).exit(ethJoin, address(this), wadC);
+        CropperLike(cropper).exit(ethJoin, address(this), wadC);
         // Converts WETH to ETH
         GemJoinLike(ethJoin).gem().withdraw(wadC);
         // Sends ETH back to the user's wallet
@@ -601,8 +596,8 @@ contract DssProxyActionsCharter is Common {
 
         // Joins DAI amount into the vat
         daiJoin_join(daiJoin, owner, wadD);
-        // Allows charter to access to proxy's DAI balance in the vat
-        VatLike(vat).hope(charter);
+        // Allows cropper to access to proxy's DAI balance in the vat
+        VatLike(vat).hope(cropper);
         // Paybacks debt to the CDP and unlocks token amount from it
         _frob(
             ilk,
@@ -614,10 +609,12 @@ contract DssProxyActionsCharter is Common {
                 ilk
             )
         );
-        // Denies charter to access to proxy's DAI balance in the vat after execution
-        VatLike(vat).nope(charter);
+        // Denies cropper to access to proxy's DAI balance in the vat after execution
+        VatLike(vat).nope(cropper);
+        // Exits token amount to proxy address as a token
+        CropperLike(cropper).exit(gemJoin, address(this), amtC);
         // Exits token amount to the user's wallet as a token
-        CharterLike(charter).exit(gemJoin, msg.sender, amtC);
+        GemJoinLike(gemJoin).gem().transfer(msg.sender, amtC);
     }
 
     function wipeAllAndFreeGem(
@@ -629,43 +626,41 @@ contract DssProxyActionsCharter is Common {
         address owner = CdpRegistryLike(cdpRegistry).owns(cdp);
         bytes32 ilk = CdpRegistryLike(cdpRegistry).ilks(cdp);
 
-        address urp = CharterLike(charter).getOrCreateProxy(owner);
+        address urp = CropperLike(cropper).getOrCreateProxy(owner);
         (, uint256 art) = VatLike(vat).urns(ilk, urp);
 
         // Joins DAI amount into the vat
         daiJoin_join(daiJoin, owner, _getWipeAllWad(owner, urp, ilk));
-        // Allows charter to access to proxy's DAI balance in the vat
-        VatLike(vat).hope(charter);
+        // Allows cropper to access to proxy's DAI balance in the vat
+        VatLike(vat).hope(cropper);
         // Paybacks debt to the CDP and unlocks token amount from it
         _frob(ilk, owner, -_toInt256(_convertTo18(gemJoin, amtC)), -_toInt256(art));
-        // Denies charter to access to proxy's DAI balance in the vat after execution
-        VatLike(vat).nope(charter);
+        // Denies cropper to access to proxy's DAI balance in the vat after execution
+        VatLike(vat).nope(cropper);
+        // Exits token amount to proxy address as a token
+        CropperLike(cropper).exit(gemJoin, address(this), amtC);
         // Exits token amount to the user's wallet as a token
-        CharterLike(charter).exit(gemJoin, msg.sender, amtC);
+        GemJoinLike(gemJoin).gem().transfer(msg.sender, amtC);
     }
 
-    function roll(
-        uint256 srcCdp,
-        uint256 dstCdp,
-        uint256 wad
+    function crop(
+        address gemJoin,
+        uint256 cdp
     ) external {
-        bytes32 srcIlk = CdpRegistryLike(cdpRegistry).ilks(srcCdp);
+        address owner = CdpRegistryLike(cdpRegistry).owns(cdp);
+        require(CdpRegistryLike(cdpRegistry).ilks(cdp) == GemJoinLike(gemJoin).ilk(), "wrong-ilk");
 
-        // Gets actual rate from the vat
-        (, uint256 rate,,,) = VatLike(vat).ilks(srcIlk);
-        CharterLike(charter).roll(
-            srcIlk,
-            CdpRegistryLike(cdpRegistry).ilks(dstCdp),
-            CdpRegistryLike(cdpRegistry).owns(srcCdp),
-            CdpRegistryLike(cdpRegistry).owns(dstCdp),
-            _mul(wad, RAY) / rate
-        );
+        CropperLike(cropper).join(gemJoin, owner, 0);
+        GemLike bonus = GemJoinLike(gemJoin).bonus();
+        bonus.transfer(msg.sender, bonus.balanceOf(address(this)));
     }
+
+    // TODO: do we want to support also flee()?
 }
 
-contract DssProxyActionsEndCharter is Common {
+contract DssProxyActionsEndCropper is Common {
 
-    constructor(address vat_, address charter_, address cdpRegistry_) public Common(vat_, charter_, cdpRegistry_) {}
+    constructor(address vat_, address cropper_, address cdpRegistry_) public Common(vat_, cropper_, cdpRegistry_) {}
 
     // Internal functions
 
@@ -674,7 +669,7 @@ contract DssProxyActionsEndCharter is Common {
         address u,
         bytes32 ilk
     ) internal returns (uint256 ink) {
-        address urp = CharterLike(charter).getOrCreateProxy(u);
+        address urp = CropperLike(cropper).getOrCreateProxy(u);
         uint256 art;
         (ink, art) = VatLike(vat).urns(ilk, urp);
 
@@ -683,15 +678,15 @@ contract DssProxyActionsEndCharter is Common {
             EndLike(end).skim(ilk, urp);
             (ink,) = VatLike(vat).urns(ilk, urp);
         }
-        // Approves the charter to transfer the position to proxy's address in the vat
-        VatLike(vat).hope(charter);
+        // Approves the cropper to transfer the position to proxy's address in the vat
+        VatLike(vat).hope(cropper);
         // Transfers position from CDP to the proxy address
-        CharterLike(charter).quit(ilk, u, address(this));
-        // Denies charter to access to proxy's position in the vat after execution
-        VatLike(vat).nope(charter);
+        CropperLike(cropper).quit(ilk, u, address(this));
+        // Denies cropper to access to proxy's position in the vat after execution
+        VatLike(vat).nope(cropper);
         // Frees the position and recovers the collateral in the vat registry
         EndLike(end).free(ilk);
-        // Fluxs to the proxy's charter proxy, so it can be pulled out with the managed gem join
+        // Fluxs to the proxy's cropper proxy, so it can be pulled out with the managed gem join
         VatLike(vat).flux(
             ilk,
             address(this),
@@ -709,7 +704,7 @@ contract DssProxyActionsEndCharter is Common {
         // Frees the position through the end contract
         uint256 wad = _free(end, CdpRegistryLike(cdpRegistry).owns(cdp), CdpRegistryLike(cdpRegistry).ilks(cdp));
         // Exits WETH amount to proxy address as a token
-        CharterLike(charter).exit(ethJoin, address(this), wad);
+        CropperLike(cropper).exit(ethJoin, address(this), wad);
         // Converts WETH to ETH
         GemJoinLike(ethJoin).gem().withdraw(wad);
         // Sends ETH back to the user's wallet
@@ -725,7 +720,10 @@ contract DssProxyActionsEndCharter is Common {
         uint256 wad = _free(end, CdpRegistryLike(cdpRegistry).owns(cdp), CdpRegistryLike(cdpRegistry).ilks(cdp));
         // Exits token amount to the user's wallet as a token
         uint256 amt = wad / 10 ** (18 - GemJoinLike(gemJoin).dec());
-        CharterLike(charter).exit(gemJoin, msg.sender, amt);
+        // Exits token amount to proxy address as a token
+        CropperLike(cropper).exit(gemJoin, address(this), amt);
+        // Exits token amount to the user's wallet as a token
+        GemJoinLike(gemJoin).gem().transfer(msg.sender, amt);
     }
 
     function pack(
@@ -750,15 +748,16 @@ contract DssProxyActionsEndCharter is Common {
         bytes32 ilk = GemJoinLike(ethJoin).ilk();
         EndLike(end).cash(ilk, wad);
         uint256 wadC = _mul(wad, EndLike(end).fix(ilk)) / RAY;
-        // Flux to the proxy's UrnProxy in charter, so it can be pulled out with the managed gem join
+        // Flux to the proxy's UrnProxy in cropper, so it can be pulled out with the managed gem join
         VatLike(vat).flux(
             ilk,
             address(this),
-            CharterLike(charter).getOrCreateProxy(address(this)),
+            CropperLike(cropper).getOrCreateProxy(address(this)),
             wadC
         );
+        // TODO: do we need to tack here?
         // Exits WETH amount to proxy address as a token
-        CharterLike(charter).exit(ethJoin, address(this), wadC);
+        CropperLike(cropper).exit(ethJoin, address(this), wadC);
         // Converts WETH to ETH
         GemJoinLike(ethJoin).gem().withdraw(wadC);
         // Sends ETH back to the user's wallet
@@ -773,15 +772,15 @@ contract DssProxyActionsEndCharter is Common {
         bytes32 ilk = GemJoinLike(gemJoin).ilk();
         EndLike(end).cash(ilk, wad);
         uint256 wadC = _mul(wad, EndLike(end).fix(ilk)) / RAY;
-        // Flux to the proxy's UrnProxy in charter, so it can be pulled out with the managed gem join
+        // Flux to the proxy's UrnProxy in cropper, so it can be pulled out with the managed gem join
         VatLike(vat).flux(
             ilk,
             address(this),
-            CharterLike(charter).getOrCreateProxy(address(this)),
+            CropperLike(cropper).getOrCreateProxy(address(this)),
             wadC
         );
         // Exits token amount to the user's wallet as a token
         uint256 amt = wadC / 10 ** (18 - GemJoinLike(gemJoin).dec());
-        CharterLike(charter).exit(gemJoin, msg.sender, amt);
+        CropperLike(cropper).exit(gemJoin, msg.sender, amt); // TODO: should this change to 2 stages as well?
     }
 }
