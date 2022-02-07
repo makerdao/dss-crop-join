@@ -32,6 +32,7 @@ interface CropperLike {
     function getOrCreateProxy(address) external returns (address);
     function join(address, address, uint256) external;
     function exit(address, address, uint256) external;
+    function flee(address, address) external;
     function frob(bytes32, address, address, address, int256, int256) external;
     function quit(bytes32, address, address) external;
 }
@@ -367,6 +368,36 @@ contract DssProxyActionsCropper is Common {
         GemJoinLike(gemJoin).gem().transfer(msg.sender, amt);
     }
 
+    function fleeETH(
+        address ethJoin,
+        uint256 cdp
+    ) external {
+        require(CdpRegistryLike(cdpRegistry).owns(cdp) == address(this), "wrong-cdp");
+        require(CdpRegistryLike(cdpRegistry).ilks(cdp) == GemJoinLike(ethJoin).ilk(), "wrong-ilk");
+        GemLike gem = GemJoinLike(ethJoin).gem();
+
+        // Exits WETH to proxy address as a token
+        uint256 pre = gem.balanceOf(address(this));
+        CropperLike(cropper).flee(ethJoin, address(this));
+        uint256 wad = _sub(gem.balanceOf(address(this)), pre);
+
+        // Converts WETH to ETH
+        gem.withdraw(wad);
+        // Sends ETH back to the user's wallet
+        msg.sender.transfer(wad);
+    }
+
+    function fleeGem(
+        address gemJoin,
+        uint256 cdp
+    ) external {
+        require(CdpRegistryLike(cdpRegistry).owns(cdp) == address(this), "wrong-cdp");
+        require(CdpRegistryLike(cdpRegistry).ilks(cdp) == GemJoinLike(gemJoin).ilk(), "wrong-ilk");
+
+        // Exits token amount to the user's wallet as a token
+        CropperLike(cropper).flee(gemJoin, msg.sender);
+    }
+
     function draw(
         address jug,
         address daiJoin,
@@ -654,8 +685,6 @@ contract DssProxyActionsCropper is Common {
         GemLike bonus = GemJoinLike(gemJoin).bonus();
         bonus.transfer(msg.sender, bonus.balanceOf(address(this)));
     }
-
-    // TODO: do we want to support also flee()?
 }
 
 contract DssProxyActionsEndCropper is Common {

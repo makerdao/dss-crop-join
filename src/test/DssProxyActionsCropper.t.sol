@@ -85,6 +85,14 @@ contract ProxyCalls {
         proxy.execute(dssProxyActions, msg.data);
     }
 
+    function fleeETH(address, uint256) public {
+        proxy.execute(dssProxyActions, msg.data);
+    }
+
+    function fleeGem(address, uint256) public {
+        proxy.execute(dssProxyActions, msg.data);
+    }
+
     function draw(address, address, uint256, uint256) public {
         proxy.execute(dssProxyActions, msg.data);
     }
@@ -611,6 +619,43 @@ contract DssProxyActionsTest is DssDeployTestBase, ProxyCalls {
         assertEq(vat.gem("WBTC", charterProxy), 0);
         assertEq(wbtc.balanceOf(address(this)), prevBalance + 2 * 10 ** 8);
         assertProxyRewarded(address(wbtcJoin), 100 * 10 ** 12);
+    }
+
+    function testFleeEth() public {
+        uint256 cdp = this.open("ETH", address(proxy));
+        realWeth.deposit{value: 1 ether}();
+        realWeth.approve(address(charter), uint256(-1));
+        charter.join(address(ethManagedJoin), address(proxy), 1 ether);
+        assertEq(vat.gem("ETH", address(this)), 0);
+        assertEq(vat.gem("ETH", charterProxy), 1 ether);
+
+        reward(address(ethManagedJoin), 100 * 10 ** 12);
+        uint256 prevBalance = address(this).balance;
+        this.fleeETH(address(ethManagedJoin), cdp);
+        assertEq(vat.gem("ETH", address(this)), 0);
+        assertEq(vat.gem("ETH", charterProxy), 0);
+        assertEq(address(this).balance, prevBalance + 1 ether);
+
+        assertEq(bonus.balanceOf(address(ethManagedJoin)), 100 * 10 ** 12);
+        assertEq(bonus.balanceOf(address(proxy)), 0);
+    }
+
+        function testFleeGem() public {
+        uint256 cdp = this.open("WBTC", address(proxy));
+        wbtc.approve(address(charter), 2 * 10 ** 8);
+        charter.join(address(wbtcJoin), address(proxy), 2 * 10 ** 8);
+        assertEq(vat.gem("WBTC", address(this)), 0);
+        assertEq(vat.gem("WBTC", charterProxy), 2 ether);
+
+        reward(address(wbtcJoin), 100 * 10 ** 12);
+        uint256 prevBalance = wbtc.balanceOf(address(this));
+        this.fleeGem(address(wbtcJoin), cdp);
+        assertEq(vat.gem("WBTC", address(this)), 0);
+        assertEq(vat.gem("WBTC", charterProxy), 0);
+        assertEq(wbtc.balanceOf(address(this)), prevBalance + 2 * 10 ** 8);
+
+        assertEq(bonus.balanceOf(address(wbtcJoin)), 100 * 10 ** 12);
+        assertEq(bonus.balanceOf(address(proxy)), 0);
     }
 
     function testCrop() public {
