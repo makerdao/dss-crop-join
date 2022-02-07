@@ -76,8 +76,8 @@ contract Usr {
     function reap() public {
         cropper.join(address(adapter), address(this), 0);
     }
-    function flee() public {
-        cropper.flee(address(adapter));
+    function flee(address usr) public {
+        cropper.flee(address(adapter), usr);
     }
     function frob(int256 dink, int256 dart) public {
         cropper.frob(adapter.ilk(), address(this), address(this), address(this), dink, dart);
@@ -259,7 +259,7 @@ contract CropperTest is TestBase {
         assertEq(bonus.balanceOf(address(b)), 50e18);
     }
 
-    function test_flee() public {
+    function test_flee_self() public {
         (Usr a,) = init_user();
         a.join(10 * 1e6);
         assertEq(gem.balanceOf(address(a)), 190 * 1e6);
@@ -268,10 +268,31 @@ contract CropperTest is TestBase {
         assertEq(a.gems(), 10 * 1e18);
         assertEq(a.stake(), 10 * 1e18);
         reward(address(join), 50 * 1e18);
-        a.flee();
+        a.flee(address(a));
         assertEq(gem.balanceOf(address(a)), 200 * 1e6);
         assertEq(gem.balanceOf(address(join)), 0);
         assertEq(bonus.balanceOf(address(a)), 0);   // No rewards with flee
+        assertEq(a.gems(), 0);
+        assertEq(a.stake(), 0);
+    }
+
+    function test_flee_other() public {
+        (Usr a, Usr b) = init_user();
+        a.join(10 * 1e6);
+        assertEq(gem.balanceOf(address(a)), 190 * 1e6);
+        assertEq(gem.balanceOf(address(b)), 200 * 1e6);
+        assertEq(gem.balanceOf(address(join)), 10 * 1e6);
+        assertEq(bonus.balanceOf(address(a)), 0);
+        assertEq(bonus.balanceOf(address(b)), 0);
+        assertEq(a.gems(), 10 * 1e18);
+        assertEq(a.stake(), 10 * 1e18);
+        reward(address(join), 50 * 1e18);
+        a.flee(address(b));
+        assertEq(gem.balanceOf(address(a)), 190 * 1e6);
+        assertEq(gem.balanceOf(address(b)), 210 * 1e6);
+        assertEq(gem.balanceOf(address(join)), 0);
+        assertEq(bonus.balanceOf(address(a)), 0);
+        assertEq(bonus.balanceOf(address(b)), 0);
         assertEq(a.gems(), 0);
         assertEq(a.stake(), 0);
     }

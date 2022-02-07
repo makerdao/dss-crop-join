@@ -158,12 +158,12 @@ contract CropperImp {
         CropLike(crop).exit(urp, usr, val);
     }
 
-    function flee(address crop) external {
+    function flee(address crop, address usr) external {
         require(VatLike(vat).wards(crop) == 1, "Cropper/crop-not-authorized");
 
         address urp = proxy[msg.sender];
         require(urp != address(0), "Cropper/non-existing-urp");
-        CropLike(crop).flee(urp, msg.sender);
+        CropLike(crop).flee(urp, usr);
     }
 
     function move(address u, address dst, uint256 rad) external allowed(u) {

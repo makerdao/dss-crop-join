@@ -101,7 +101,7 @@ contract Usr {
         cropper.join(address(adapter), address(this), 0);
     }
     function flee() public {
-        cropper.flee(address(adapter));
+        cropper.flee(address(adapter), address(this));
     }
     function flux(address src, address dst, uint256 wad) public {
         cropper.flux(address(adapter), src, dst, wad);

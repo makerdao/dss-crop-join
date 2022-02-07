@@ -95,7 +95,7 @@ contract Usr {
         cropper.join(address(adapter), address(this), 0);
     }
     function flee() public {
-        cropper.flee(address(adapter));
+        cropper.flee(address(adapter), address(this));
     }
     function giveTokens(ERC20 token, uint256 amount) external {
         // Edge case - balance is already set for some reason
