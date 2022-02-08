@@ -85,11 +85,11 @@ contract ProxyCalls {
         proxy.execute(dssProxyActions, msg.data);
     }
 
-    function fleeETH(address, uint256) public {
+    function fleeETH(address, uint256, uint256) public {
         proxy.execute(dssProxyActions, msg.data);
     }
 
-    function fleeGem(address, uint256) public {
+    function fleeGem(address, uint256, uint256) public {
         proxy.execute(dssProxyActions, msg.data);
     }
 
@@ -631,7 +631,7 @@ contract DssProxyActionsTest is DssDeployTestBase, ProxyCalls {
 
         reward(address(ethManagedJoin), 100 * 10 ** 12);
         uint256 prevBalance = address(this).balance;
-        this.fleeETH(address(ethManagedJoin), cdp);
+        this.fleeETH(address(ethManagedJoin), cdp, 1 ether);
         assertEq(vat.gem("ETH", address(this)), 0);
         assertEq(vat.gem("ETH", charterProxy), 0);
         assertEq(address(this).balance, prevBalance + 1 ether);
@@ -649,7 +649,7 @@ contract DssProxyActionsTest is DssDeployTestBase, ProxyCalls {
 
         reward(address(wbtcJoin), 100 * 10 ** 12);
         uint256 prevBalance = wbtc.balanceOf(address(this));
-        this.fleeGem(address(wbtcJoin), cdp);
+        this.fleeGem(address(wbtcJoin), cdp, 2 * 10 ** 8);
         assertEq(vat.gem("WBTC", address(this)), 0);
         assertEq(vat.gem("WBTC", charterProxy), 0);
         assertEq(wbtc.balanceOf(address(this)), prevBalance + 2 * 10 ** 8);

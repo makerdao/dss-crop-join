@@ -82,12 +82,11 @@ contract SynthetixJoinImp is CropJoinImp {
         super.exit(urn, usr, val);
     }
 
-    function flee(address urn, address usr) public override {
+    function flee(address urn, address usr, uint256 val) public override {
         if (live == 1) {
-            uint256 val = vat.gem(ilk, urn);
             if (val > 0) pool.withdraw(val);
         }
-        super.flee(urn, usr);
+        super.flee(urn, usr, val);
     }
     function cage() override public auth {
         require(live == 1, "SynthetixJoin/not-live");

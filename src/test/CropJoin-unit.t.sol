@@ -109,8 +109,8 @@ contract Usr {
     function reap() public {
         adapter.join(address(this), address(this), 0);
     }
-    function flee(address urn, address usr) public {
-        adapter.flee(urn, usr);
+    function flee(address urn, address usr, uint256 val) public {
+        adapter.flee(urn, usr, val);
     }
     function tack(address src, address dst, uint256 wad) public {
         adapter.tack(src, dst, wad);
@@ -327,7 +327,7 @@ contract CropUnitTest is TestBase {
         assertEq(gem.balanceOf(address(b)), 200e6,  "b balance before exit");
         assertEq(join.stake(address(b)),       0e18, "b join balance before");
         join.tack(address(a), address(b),     50e18);
-        b.flee(address(b), address(b));
+        b.flee(address(b), address(b), 50e6);
         assertEq(gem.balanceOf(address(b)), 250e6,  "b balance after exit");
         assertEq(join.stake(address(b)),       0e18, "b join balance after");
     }
@@ -390,7 +390,7 @@ contract CropUnitTest is TestBase {
 
         reward(address(join), 10 * 1e18);
         assertEq(gem.balanceOf(self),  950e6, "balance before flee");
-        join.flee(address(this), address(this));
+        join.flee(address(this), address(this), 50 * 1e6);
         assertEq(bonus.balanceOf(self), 20 * 1e18, "rewards invariant over flee");
         assertEq(gem.balanceOf(self), 1000e6, "balance after flee");
     }
@@ -585,7 +585,7 @@ contract CropUnitTest is TestBase {
         // Can still exit and flee
         a.exit(address(a), address(a), 50e6);
         assertEq(gem.balanceOf(address(a)), 150e6);
-        a.flee(address(a), address(a));
+        a.flee(address(a), address(a), 50e6);
         assertEq(gem.balanceOf(address(a)), 200e6);
     }
 

@@ -100,8 +100,8 @@ contract Usr {
     function reap() public {
         cropper.join(address(adapter), address(this), 0);
     }
-    function flee() public {
-        cropper.flee(address(adapter), address(this));
+    function flee(uint256 amt) public {
+        cropper.flee(address(adapter), address(this), amt);
     }
     function flux(address src, address dst, uint256 wad) public {
         cropper.flux(address(adapter), src, dst, wad);
@@ -391,7 +391,7 @@ contract SushiIntegrationTest is TestBase {
             assertEq(pair.balanceOf(address(join)), join.total());
         }
 
-        usr.flee();
+        usr.flee(amount);
 
         assertEq(join.total(), ptotal - amount);
         assertEq(usr.stake(), 0);

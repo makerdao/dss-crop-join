@@ -76,8 +76,8 @@ contract Usr {
     function reap() public {
         cropper.join(address(adapter), address(this), 0);
     }
-    function flee(address usr) public {
-        cropper.flee(address(adapter), usr);
+    function flee(address usr, uint256 amt) public {
+        cropper.flee(address(adapter), usr, amt);
     }
     function frob(int256 dink, int256 dart) public {
         cropper.frob(adapter.ilk(), address(this), address(this), address(this), dink, dart);
@@ -268,7 +268,7 @@ contract CropperTest is TestBase {
         assertEq(a.gems(), 10 * 1e18);
         assertEq(a.stake(), 10 * 1e18);
         reward(address(join), 50 * 1e18);
-        a.flee(address(a));
+        a.flee(address(a), 10 * 1e6);
         assertEq(gem.balanceOf(address(a)), 200 * 1e6);
         assertEq(gem.balanceOf(address(join)), 0);
         assertEq(bonus.balanceOf(address(a)), 0);   // No rewards with flee
@@ -287,7 +287,7 @@ contract CropperTest is TestBase {
         assertEq(a.gems(), 10 * 1e18);
         assertEq(a.stake(), 10 * 1e18);
         reward(address(join), 50 * 1e18);
-        a.flee(address(b));
+        a.flee(address(b), 10 * 1e6);
         assertEq(gem.balanceOf(address(a)), 190 * 1e6);
         assertEq(gem.balanceOf(address(b)), 210 * 1e6);
         assertEq(gem.balanceOf(address(join)), 0);
@@ -751,6 +751,6 @@ contract CropperTest is TestBase {
         join.exit(address(this), address(this), 0);
     }
     function testFail_crop_flee() public {
-        join.flee(address(this), address(this));
+        join.flee(address(this), address(this), 0);
     }
 }
