@@ -118,12 +118,11 @@ contract SushiJoinImp is CropJoinImp {
         super.exit(urn, usr, val);
     }
 
-    function flee(address urn, address usr) public override {
+    function flee(address urn, address usr, uint256 val) public override {
         if (live == 1) {
-            uint256 val = vat.gem(ilk, urn);
             masterchef.withdraw(pid, val);
         }
-        super.flee(urn, usr);
+        super.flee(urn, usr, val);
     }
     function cage() override public {
         require(live == 1, "SushiJoin/not-live");

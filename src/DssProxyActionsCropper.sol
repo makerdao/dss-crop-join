@@ -32,7 +32,7 @@ interface CropperLike {
     function getOrCreateProxy(address) external returns (address);
     function join(address, address, uint256) external;
     function exit(address, address, uint256) external;
-    function flee(address, address) external;
+    function flee(address, address, uint256) external;
     function frob(bytes32, address, address, address, int256, int256) external;
     function quit(bytes32, address, address) external;
 }
@@ -370,32 +370,29 @@ contract DssProxyActionsCropper is Common {
 
     function fleeETH(
         address ethJoin,
-        uint256 cdp
+        uint256 cdp,
+        uint256 wad
     ) external {
         require(CdpRegistryLike(cdpRegistry).owns(cdp) == address(this), "wrong-cdp");
         require(CdpRegistryLike(cdpRegistry).ilks(cdp) == GemJoinLike(ethJoin).ilk(), "wrong-ilk");
-        GemLike gem = GemJoinLike(ethJoin).gem();
-
         // Exits WETH to proxy address as a token
-        uint256 pre = gem.balanceOf(address(this));
-        CropperLike(cropper).flee(ethJoin, address(this));
-        uint256 wad = _sub(gem.balanceOf(address(this)), pre);
-
+        CropperLike(cropper).flee(ethJoin, address(this), wad);
         // Converts WETH to ETH
-        gem.withdraw(wad);
+        GemJoinLike(ethJoin).gem().withdraw(wad);
         // Sends ETH back to the user's wallet
         msg.sender.transfer(wad);
     }
 
     function fleeGem(
         address gemJoin,
-        uint256 cdp
+        uint256 cdp,
+        uint256 amt
     ) external {
         require(CdpRegistryLike(cdpRegistry).owns(cdp) == address(this), "wrong-cdp");
         require(CdpRegistryLike(cdpRegistry).ilks(cdp) == GemJoinLike(gemJoin).ilk(), "wrong-ilk");
 
         // Exits token amount to the user's wallet as a token
-        CropperLike(cropper).flee(gemJoin, msg.sender);
+        CropperLike(cropper).flee(gemJoin, msg.sender, amt);
     }
 
     function draw(
@@ -784,9 +781,8 @@ contract DssProxyActionsEndCropper is Common {
             CropperLike(cropper).getOrCreateProxy(address(this)),
             wadC
         );
-        // TODO: do we need to tack here?
         // Exits WETH amount to proxy address as a token
-        CropperLike(cropper).exit(ethJoin, address(this), wadC);
+        CropperLike(cropper).flee(ethJoin, address(this), wadC);
         // Converts WETH to ETH
         GemJoinLike(ethJoin).gem().withdraw(wadC);
         // Sends ETH back to the user's wallet
@@ -810,6 +806,6 @@ contract DssProxyActionsEndCropper is Common {
         );
         // Exits token amount to the user's wallet as a token
         uint256 amt = wadC / 10 ** (18 - GemJoinLike(gemJoin).dec());
-        CropperLike(cropper).exit(gemJoin, msg.sender, amt); // TODO: should this change to 2 stages as well?
+        CropperLike(cropper).flee(gemJoin, msg.sender, amt);
     }
 }
