@@ -94,8 +94,8 @@ contract Usr {
     function reap() public {
         cropper.join(address(adapter), address(this), 0);
     }
-    function flee() public {
-        cropper.flee(address(adapter));
+    function flee(uint256 amt) public {
+        cropper.flee(address(adapter), address(this), amt);
     }
     function giveTokens(ERC20 token, uint256 amount) external {
         // Edge case - balance is already set for some reason
@@ -291,7 +291,7 @@ contract LidoIntegrationTest is TestBase {
         assertEq(pool.balanceOf(address(join)), 10 ether);
         assertEq(user1.tokens(), origBal - 10 ether);
 
-        user1.flee();   // Should exit without rewards
+        user1.flee(10 ether);   // Should exit without rewards
 
         assertEq(pool.balanceOf(address(join)), 0 ether);
         assertEq(user1.tokens(), origBal);

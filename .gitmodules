@@ -4,3 +4,12 @@
 [submodule "lib/proxy-manager-clipper"]
 	path = lib/proxy-manager-clipper
 	url = https://github.com/makerdao/proxy-manager-clipper
+[submodule "lib/ds-weth"]
+	path = lib/ds-weth
+	url = https://github.com/dapphub/ds-weth
+[submodule "lib/proxy-registry"]
+	path = lib/proxy-registry
+	url = https://github.com/makerdao/proxy-registry
+[submodule "lib/dss-deploy"]
+	path = lib/dss-deploy
+	url = https://github.com/makerdao/dss-deploy

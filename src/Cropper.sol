@@ -35,7 +35,7 @@ interface CropLike {
     function join(address, address, uint256) external;
     function exit(address, address, uint256) external;
     function tack(address, address, uint256) external;
-    function flee(address, address) external;
+    function flee(address, address, uint256) external;
 }
 
 interface GemLike {
@@ -158,12 +158,12 @@ contract CropperImp {
         CropLike(crop).exit(urp, usr, val);
     }
 
-    function flee(address crop) external {
+    function flee(address crop, address usr, uint256 val) external {
         require(VatLike(vat).wards(crop) == 1, "Cropper/crop-not-authorized");
 
         address urp = proxy[msg.sender];
         require(urp != address(0), "Cropper/non-existing-urp");
-        CropLike(crop).flee(urp, msg.sender);
+        CropLike(crop).flee(urp, usr, val);
     }
 
     function move(address u, address dst, uint256 rad) external allowed(u) {

@@ -228,10 +228,12 @@ contract CropJoinImp {
         emit Exit(urn, usr, val);
     }
 
-    function flee(address urn, address usr) public auth virtual {
-        uint256 wad = vat.gem(ilk, urn);
-        require(wad <= 2 ** 255);
-        uint256 val = wmul(wmul(wad, nps()), toGemConversionFactor);
+    function flee(address urn, address usr, uint256 val) public auth virtual {
+        uint256 wad = wdivup(mul(val, to18ConversionFactor), nps());
+
+        // Overflow check for int256(wad) cast below
+        // Also enforces a non-zero wad
+        require(int256(wad) > 0);
 
         require(gem.transfer(usr, val));
         vat.slip(ilk, urn, -int256(wad));
