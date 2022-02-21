@@ -54,10 +54,6 @@ contract ProxyCalls {
         proxy.execute(dssProxyActions, msg.data);
     }
 
-    function quit(uint256, address) public {
-        proxy.execute(dssProxyActions, msg.data);
-    }
-
     function lockETH(address, uint256) public payable {
         (bool success,) = address(proxy).call{value: msg.value}(
             abi.encodeWithSignature("execute(address,bytes)", dssProxyActions, msg.data)
@@ -567,25 +563,6 @@ contract DssProxyActionsTest is DssDeployTestBase, ProxyCalls {
         assertEq(vat.can(address(proxy), address(123)), 1);
         this.nope(address(vat), address(123));
         assertEq(vat.can(address(proxy), address(123)), 0);
-    }
-
-    function testQuit() public {
-        uint256 cdp = this.open("ETH", address(proxy));
-        this.lockETHAndDraw{value: 1 ether}(address(jug), address(ethManagedJoin), address(daiJoin), cdp, 50 ether);
-
-        assertEq(ink("ETH", charterProxy), 1 ether);
-        assertEq(art("ETH", charterProxy), 50 ether);
-        assertEq(ink("ETH", address(proxy)), 0);
-        assertEq(art("ETH", address(proxy)), 0);
-
-        cheat_cage();
-        this.hope(address(vat), address(charter));
-        this.quit(cdp, address(proxy));
-
-        assertEq(ink("ETH", charterProxy), 0);
-        assertEq(art("ETH", charterProxy), 0);
-        assertEq(ink("ETH", address(proxy)), 1 ether);
-        assertEq(art("ETH", address(proxy)), 50 ether);
     }
 
     function testExitEth() public {
