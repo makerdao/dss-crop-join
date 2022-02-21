@@ -13,10 +13,6 @@ import {DSValue} from "ds-value/value.sol";
 import {ProxyRegistry, DSProxyFactory, DSProxy} from "proxy-registry/ProxyRegistry.sol";
 import {WETH9_} from "ds-weth/weth9.sol";
 
-interface HevmStoreLike {
-    function store(address, bytes32, bytes32) external;
-}
-
 contract MockCdpManager {
     uint256 public cdpi;
 
@@ -194,10 +190,6 @@ contract DssProxyActionsTest is DssDeployTestBase, ProxyCalls {
     ProxyRegistry registry;
     WETH9_ realWeth;
     Token bonus;
-
-    function cheat_cage() public {
-        HevmStoreLike(address(hevm)).store(address(vat), bytes32(uint256(10)), bytes32(uint256(0)));
-    }
 
     function reward(address usr, uint256 wad) internal virtual {
         bonus.mint(usr, wad);
