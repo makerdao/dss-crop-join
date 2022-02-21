@@ -4,7 +4,7 @@ import "ds-test/test.sol";
 
 import "../DssProxyActionsCropper.sol";
 import {Cropper, CropperImp} from "../Cropper.sol";
-import {CdpRegistry} from "../CdpRegistry.sol";
+import {CdpRegistry} from "lib/dss-cdp-registry/src/CdpRegistry.sol";
 import {CropJoin, CropJoinImp} from "../CropJoin.sol";
 
 import {Token} from "./TestBase.sol";
