@@ -4,7 +4,7 @@ import "ds-test/test.sol";
 
 import "../DssProxyActionsCropper.sol";
 import {Cropper, CropperImp} from "../Cropper.sol";
-import {CdpRegistry} from "../CdpRegistry.sol";
+import {CdpRegistry} from "dss-cdp-registry/CdpRegistry.sol";
 import {CropJoin, CropJoinImp} from "../CropJoin.sol";
 
 import {Token} from "./TestBase.sol";
@@ -12,10 +12,6 @@ import {DssDeployTestBase} from "dss-deploy/DssDeploy.t.base.sol";
 import {DSValue} from "ds-value/value.sol";
 import {ProxyRegistry, DSProxyFactory, DSProxy} from "proxy-registry/ProxyRegistry.sol";
 import {WETH9_} from "ds-weth/weth9.sol";
-
-interface HevmStoreLike {
-    function store(address, bytes32, bytes32) external;
-}
 
 contract MockCdpManager {
     uint256 public cdpi;
@@ -51,10 +47,6 @@ contract ProxyCalls {
     }
 
     function daiJoin_join(address, address, uint256) public {
-        proxy.execute(dssProxyActions, msg.data);
-    }
-
-    function quit(uint256, address) public {
         proxy.execute(dssProxyActions, msg.data);
     }
 
@@ -198,10 +190,6 @@ contract DssProxyActionsTest is DssDeployTestBase, ProxyCalls {
     ProxyRegistry registry;
     WETH9_ realWeth;
     Token bonus;
-
-    function cheat_cage() public {
-        HevmStoreLike(address(hevm)).store(address(vat), bytes32(uint256(10)), bytes32(uint256(0)));
-    }
 
     function reward(address usr, uint256 wad) internal virtual {
         bonus.mint(usr, wad);
@@ -567,25 +555,6 @@ contract DssProxyActionsTest is DssDeployTestBase, ProxyCalls {
         assertEq(vat.can(address(proxy), address(123)), 1);
         this.nope(address(vat), address(123));
         assertEq(vat.can(address(proxy), address(123)), 0);
-    }
-
-    function testQuit() public {
-        uint256 cdp = this.open("ETH", address(proxy));
-        this.lockETHAndDraw{value: 1 ether}(address(jug), address(ethManagedJoin), address(daiJoin), cdp, 50 ether);
-
-        assertEq(ink("ETH", charterProxy), 1 ether);
-        assertEq(art("ETH", charterProxy), 50 ether);
-        assertEq(ink("ETH", address(proxy)), 0);
-        assertEq(art("ETH", address(proxy)), 0);
-
-        cheat_cage();
-        this.hope(address(vat), address(charter));
-        this.quit(cdp, address(proxy));
-
-        assertEq(ink("ETH", charterProxy), 0);
-        assertEq(art("ETH", charterProxy), 0);
-        assertEq(ink("ETH", address(proxy)), 1 ether);
-        assertEq(art("ETH", address(proxy)), 50 ether);
     }
 
     function testExitEth() public {

@@ -13,3 +13,6 @@
 [submodule "lib/dss-deploy"]
 	path = lib/dss-deploy
 	url = https://github.com/makerdao/dss-deploy
+[submodule "lib/dss-cdp-registry"]
+	path = lib/dss-cdp-registry
+	url = https://github.com/makerdao/dss-cdp-registry
