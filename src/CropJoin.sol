@@ -107,6 +107,9 @@ contract CropJoinImp {
     uint256 immutable internal to18ConversionFactor;
     uint256 immutable internal toGemConversionFactor;
 
+    uint256 constant WAD  = 10 ** 18;
+    uint256 constant RAY  = 10 ** 27;
+
     // --- Events ---
     event Join(address indexed urn, address indexed usr, uint256 val);
     event Exit(address indexed urn, address indexed usr, uint256 val);
@@ -130,60 +133,58 @@ contract CropJoinImp {
         bonus = ERC20(bonus_);
     }
 
-    function add(uint256 x, uint256 y) public pure returns (uint256 z) {
+    function _add(uint256 x, uint256 y) internal pure returns (uint256 z) {
         require((z = x + y) >= x, "ds-math-add-overflow");
     }
-    function sub(uint256 x, uint256 y) public pure returns (uint256 z) {
+    function _sub(uint256 x, uint256 y) internal pure returns (uint256 z) {
         require((z = x - y) <= x, "ds-math-sub-underflow");
     }
-    function mul(uint256 x, uint256 y) public pure returns (uint256 z) {
+    function _mul(uint256 x, uint256 y) internal pure returns (uint256 z) {
         require(y == 0 || (z = x * y) / y == x, "ds-math-mul-overflow");
     }
-    function divup(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        z = add(x, sub(y, 1)) / y;
+    function _divup(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        z = _add(x, _sub(y, 1)) / y;
     }
-    uint256 constant WAD  = 10 ** 18;
-    function wmul(uint256 x, uint256 y) public pure returns (uint256 z) {
-        z = mul(x, y) / WAD;
+    function _wmul(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        z = _mul(x, y) / WAD;
     }
-    function wdiv(uint256 x, uint256 y) public pure returns (uint256 z) {
-        z = mul(x, WAD) / y;
+    function _wdiv(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        z = _mul(x, WAD) / y;
     }
-    function wdivup(uint256 x, uint256 y) public pure returns (uint256 z) {
-        z = divup(mul(x, WAD), y);
+    function _wdivup(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        z = _divup(_mul(x, WAD), y);
     }
-    uint256 constant RAY  = 10 ** 27;
-    function rmul(uint256 x, uint256 y) public pure returns (uint256 z) {
-        z = mul(x, y) / RAY;
+    function _rmul(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        z = _mul(x, y) / RAY;
     }
-    function rmulup(uint256 x, uint256 y) public pure returns (uint256 z) {
-        z = divup(mul(x, y), RAY);
+    function _rmulup(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        z = _divup(_mul(x, y), RAY);
     }
-    function rdiv(uint256 x, uint256 y) public pure returns (uint256 z) {
-        z = mul(x, RAY) / y;
+    function _rdiv(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        z = _mul(x, RAY) / y;
     }
 
     // Net Asset Valuation [wad]
     function nav() public virtual view returns (uint256) {
         uint256 _nav = gem.balanceOf(address(this));
-        return mul(_nav, to18ConversionFactor);
+        return _mul(_nav, to18ConversionFactor);
     }
 
     // Net Assets per Share [wad]
     function nps() public view returns (uint256) {
         if (total == 0) return WAD;
-        else return wdiv(nav(), total);
+        else return _wdiv(nav(), total);
     }
 
     function crop() internal virtual returns (uint256) {
-        return sub(bonus.balanceOf(address(this)), stock);
+        return _sub(bonus.balanceOf(address(this)), stock);
     }
 
     function harvest(address from, address to) internal {
-        if (total > 0) share = add(share, rdiv(crop(), total));
+        if (total > 0) share = _add(share, _rdiv(crop(), total));
 
         uint256 last = crops[from];
-        uint256 curr = rmul(stake[from], share);
+        uint256 curr = _rmul(stake[from], share);
         if (curr > last) require(bonus.transfer(to, curr - last));
         stock = bonus.balanceOf(address(this));
     }
@@ -193,7 +194,7 @@ contract CropJoinImp {
 
         harvest(urn, usr);
         if (val > 0) {
-            uint256 wad = wdiv(mul(val, to18ConversionFactor), nps());
+            uint256 wad = _wdiv(_mul(val, to18ConversionFactor), nps());
 
             // Overflow check for int256(wad) cast below
             // Also enforces a non-zero wad
@@ -202,17 +203,17 @@ contract CropJoinImp {
             require(gem.transferFrom(msg.sender, address(this), val));
             vat.slip(ilk, urn, int256(wad));
 
-            total = add(total, wad);
-            stake[urn] = add(stake[urn], wad);
+            total = _add(total, wad);
+            stake[urn] = _add(stake[urn], wad);
         }
-        crops[urn] = rmulup(stake[urn], share);
+        crops[urn] = _rmulup(stake[urn], share);
         emit Join(urn, usr, val);
     }
 
     function exit(address urn, address usr, uint256 val) public auth virtual {
         harvest(urn, usr);
         if (val > 0) {
-            uint256 wad = wdivup(mul(val, to18ConversionFactor), nps());
+            uint256 wad = _wdivup(_mul(val, to18ConversionFactor), nps());
 
             // Overflow check for int256(wad) cast below
             // Also enforces a non-zero wad
@@ -221,15 +222,15 @@ contract CropJoinImp {
             require(gem.transfer(usr, val));
             vat.slip(ilk, urn, -int256(wad));
 
-            total = sub(total, wad);
-            stake[urn] = sub(stake[urn], wad);
+            total = _sub(total, wad);
+            stake[urn] = _sub(stake[urn], wad);
         }
-        crops[urn] = rmulup(stake[urn], share);
+        crops[urn] = _rmulup(stake[urn], share);
         emit Exit(urn, usr, val);
     }
 
     function flee(address urn, address usr, uint256 val) public auth virtual {
-        uint256 wad = wdivup(mul(val, to18ConversionFactor), nps());
+        uint256 wad = _wdivup(_mul(val, to18ConversionFactor), nps());
 
         // Overflow check for int256(wad) cast below
         // Also enforces a non-zero wad
@@ -238,29 +239,29 @@ contract CropJoinImp {
         require(gem.transfer(usr, val));
         vat.slip(ilk, urn, -int256(wad));
 
-        total = sub(total, wad);
-        stake[urn] = sub(stake[urn], wad);
-        crops[urn] = rmulup(stake[urn], share);
+        total = _sub(total, wad);
+        stake[urn] = _sub(stake[urn], wad);
+        crops[urn] = _rmulup(stake[urn], share);
 
         emit Flee(urn, usr, val);
     }
 
     function tack(address src, address dst, uint256 wad) public {
         uint256 ss = stake[src];
-        stake[src] = sub(ss, wad);
-        stake[dst] = add(stake[dst], wad);
+        stake[src] = _sub(ss, wad);
+        stake[dst] = _add(stake[dst], wad);
 
         uint256 cs     = crops[src];
-        uint256 dcrops = mul(cs, wad) / ss;
+        uint256 dcrops = _mul(cs, wad) / ss;
 
         // safe since dcrops <= crops[src]
         crops[src] = cs - dcrops;
-        crops[dst] = add(crops[dst], dcrops);
+        crops[dst] = _add(crops[dst], dcrops);
 
         (uint256 ink,) = vat.urns(ilk, src);
-        require(stake[src] >= add(vat.gem(ilk, src), ink));
+        require(stake[src] >= _add(vat.gem(ilk, src), ink));
         (ink,) = vat.urns(ilk, dst);
-        require(stake[dst] <= add(vat.gem(ilk, dst), ink));
+        require(stake[dst] <= _add(vat.gem(ilk, dst), ink));
 
         emit Tack(src, dst, wad);
     }

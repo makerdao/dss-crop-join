@@ -76,6 +76,7 @@ contract MockVat {
         live = 0;
     }
     function wards(address usr) external view returns (uint256) {
+        usr;
         return 1;
     }
 }
@@ -464,7 +465,7 @@ contract CropUnitTest is TestBase {
         assertEq(b.crops(), 50e18);
         assertEq(bonus.balanceOf(address(a)), 0);
         assertEq(bonus.balanceOf(address(b)), 50e18);
-        
+
         // B withdraws to A (rewards also go to A)
         reward(address(join), 50e18);
         b.exit(address(b), address(a), 100e6);
@@ -475,7 +476,7 @@ contract CropUnitTest is TestBase {
         assertEq(bonus.balanceOf(address(a)), 50e18);
         assertEq(bonus.balanceOf(address(b)), 50e18);
     }
-    
+
     function test_tack_share_differs() public {
         /*
             If share (cumulative bonus tokens per stake) changes, this affects
