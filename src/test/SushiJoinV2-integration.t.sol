@@ -183,7 +183,8 @@ contract Usr {
 }
 
 // Mainnet tests against SushiSwap
-contract SushiIntegrationTest is TestBase {
+// NOTE: Set to abstract to disable tests
+abstract contract SushiIntegrationTest is TestBase {
 
     SushiLPLike pair;
     ERC20 sushi;
