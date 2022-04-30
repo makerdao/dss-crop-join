@@ -54,11 +54,11 @@ contract CurveGaugeJoinImp is CropJoinImp {
         CropJoinImp(vat_, ilk_, gem_, bonus_)
     {
         // Sanity checks
-        require(StakingRewardsLike(pool_).crv_token() == bonus_, "CurveGaugeJoin/bonus-mismatch");
+        require(LiquidityGaugeLike(pool_).crv_token() == bonus_, "CurveGaugeJoin/bonus-mismatch");
         require(LiquidityGaugeLike(pool_).lp_token() == gem_, "CurveGaugeJoin/gem-mismatch");
 
         pool = LiquidityGaugeLike(pool_);
-        minter = LiquidityGaugeLike(pool_).minter();
+        minter = LiquidityGaugeMinterLike(LiquidityGaugeLike(pool_).minter());
     }
 
     function init() external {
