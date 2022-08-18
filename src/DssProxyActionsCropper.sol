@@ -761,17 +761,16 @@ contract DssProxyActionsEndCropper is Common {
         bytes32 ilk = GemJoinLike(ethJoin).ilk();
         EndLike(end).cash(ilk, wad);
         uint256 wadC = _mul(wad, EndLike(end).fix(ilk)) / RAY;
+        address urnProxy = CropperLike(cropper).getOrCreateProxy(address(this));
         // Flux to the proxy's UrnProxy in cropper, so it can be pulled out with the managed gem join
         VatLike(vat).flux(
             ilk,
             address(this),
-            CropperLike(cropper).getOrCreateProxy(address(this)),
+            urnProxy,
             wadC
         );
-
-        // This assumes that after skimming, stake was tacked to End
-        GemJoinLike(ethJoin).tack(end, CropperLike(cropper).getOrCreateProxy(address(this)), wadC); // TODO: cache the proxy
-
+        // Tack from End to allow fleeing, assumes vaults stakes were tacked to End after skimming
+        GemJoinLike(ethJoin).tack(end, urnProxy, wadC);
         // Exits WETH amount to proxy address as a token
         CropperLike(cropper).flee(ethJoin, address(this), wadC);
         // Converts WETH to ETH
@@ -788,17 +787,16 @@ contract DssProxyActionsEndCropper is Common {
         bytes32 ilk = GemJoinLike(gemJoin).ilk();
         EndLike(end).cash(ilk, wad);
         uint256 wadC = _mul(wad, EndLike(end).fix(ilk)) / RAY;
+        address urnProxy = CropperLike(cropper).getOrCreateProxy(address(this));
         // Flux to the proxy's UrnProxy in cropper, so it can be pulled out with the managed gem join
         VatLike(vat).flux(
             ilk,
             address(this),
-            CropperLike(cropper).getOrCreateProxy(address(this)),
+            urnProxy,
             wadC
         );
-
-        // This assumes that after skimming, stake was tacked to End
-        GemJoinLike(gemJoin).tack(end, CropperLike(cropper).getOrCreateProxy(address(this)), wadC); // TODO: cache the proxy
-
+        // Tack from End to allow fleeing, assumes vaults stakes were tacked to End after skimming
+        GemJoinLike(gemJoin).tack(end, urnProxy, wadC);
         // Exits token amount to the user's wallet as a token
         uint256 amt = wadC / 10 ** (18 - GemJoinLike(gemJoin).dec());
         CropperLike(cropper).flee(gemJoin, msg.sender, amt);
