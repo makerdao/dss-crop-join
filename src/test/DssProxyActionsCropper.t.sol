@@ -22,6 +22,34 @@ contract MockCdpManager {
     }
 }
 
+contract User {
+    DSProxy public proxy;
+    address public dssProxyActionsEnd;
+
+    receive() external payable {}
+
+    constructor(ProxyRegistry registry, address _dssProxyActionsEnd) public {
+        proxy = DSProxy(registry.build());
+        dssProxyActionsEnd = _dssProxyActionsEnd;
+    }
+
+    function approve(address token, address usr, uint256 amount) public {
+        Token(token).approve(usr, amount);
+    }
+
+    function end_pack(address a, address b, uint256 c) public {
+        proxy.execute(dssProxyActionsEnd, abi.encodeWithSignature("pack(address,address,uint256)", a, b, c));
+    }
+
+    function end_cashETH(address a, address b, uint256 c) public {
+        proxy.execute(dssProxyActionsEnd, abi.encodeWithSignature("cashETH(address,address,uint256)", a, b, c));
+    }
+
+    function end_cashGem(address a, address b, uint256 c) public {
+        proxy.execute(dssProxyActionsEnd, abi.encodeWithSignature("cashGem(address,address,uint256)", a, b, c));
+    }
+}
+
 contract ProxyCalls {
     DSProxy proxy;
     address dssProxyActions;
@@ -669,7 +697,9 @@ contract DssProxyActionsTest is DssDeployTestBase, ProxyCalls {
         (inkV, artV) = vat.urns("ETH", charterProxy);
         assertEq(inkV, 0);
         assertEq(artV, 0);
-        uint256 remainInkVal = 2 ether - 300 * end.tag("ETH") / 10 ** 9; // 2 ETH (deposited) - 300 DAI debt * ETH cage price
+        uint256 skimmedEth = vat.gem("ETH", address(end));
+        assertEq(skimmedEth, 300 * end.tag("ETH") / 10 ** 9);
+        uint256 remainInkVal = 2 ether - skimmedEth; // 2 ETH (deposited) - 300 DAI debt * ETH cage price
         assertEq(address(this).balance, prevBalanceETH + remainInkVal);
         assertProxyRewarded(address(ethManagedJoin), 100 * 10 ** 12);
 
@@ -678,7 +708,9 @@ contract DssProxyActionsTest is DssDeployTestBase, ProxyCalls {
         (inkV, artV) = vat.urns("WBTC", charterProxy);
         assertEq(inkV, 0);
         assertEq(artV, 0);
-        remainInkVal = (1 ether - 5 * end.tag("WBTC") / 10 ** 9) / 10 ** 10; // 1 WBTC (deposited) - 5 DAI debt * WBTC cage price
+        uint256 skimmedWbtc = vat.gem("WBTC", address(end));
+        assertEq(skimmedWbtc, 5 * end.tag("WBTC") / 10 ** 9);
+        remainInkVal = (1 ether - skimmedWbtc) / 10 ** 10; // 1 WBTC (deposited) - 5 DAI debt * WBTC cage price
         assertEq(wbtc.balanceOf(address(this)), prevBalanceWBTC + remainInkVal);
         assertProxyRewarded(address(ethManagedJoin), 200 * 10 ** 12);
 
@@ -687,14 +719,23 @@ contract DssProxyActionsTest is DssDeployTestBase, ProxyCalls {
         end.flow("ETH");
         end.flow("WBTC");
 
-        dai.approve(address(proxy), 305 ether);
-        this.end_pack(address(daiJoin), address(end), 305 ether);
+        User user = new User(registry, dssProxyActionsEnd);
 
-        this.end_cashETH(address(ethManagedJoin), address(end), 305 ether);
-        this.end_cashGem(address(wbtcJoin), address(end), 305 ether);
+        // Move dai to user so he can redeem it for collateral
+        dai.transfer(address(user), 305 ether);
 
-        assertEq(address(this).balance, prevBalanceETH + 2 ether - 1); // (-1 rounding)
-        assertEq(wbtc.balanceOf(address(this)), prevBalanceWBTC + 1 * 10 ** 8 - 1); // (-1 rounding)
+        user.approve(address(dai), address(user.proxy()), 305 ether);
+        user.end_pack(address(daiJoin), address(end), 305 ether);
+
+        // Tack from the skimmed vaults to End, required for cashing
+        ethManagedJoin.tack(charterProxy, address(end), ethManagedJoin.stake(charterProxy));
+        wbtcJoin.tack(charterProxy, address(end), wbtcJoin.stake(charterProxy));
+
+        user.end_cashETH(address(ethManagedJoin), address(end), 305 ether);
+        user.end_cashGem(address(wbtcJoin), address(end), 305 ether);
+
+        assertEq(address(user).balance, skimmedEth - 1); // (-1 rounding)
+        assertEq(wbtc.balanceOf(address(user)), skimmedWbtc / 10 ** 10 - 1); // (-1 rounding)
     }
 
     receive() external payable {}
