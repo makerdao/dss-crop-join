@@ -769,7 +769,7 @@ contract DssProxyActionsEndCropper is Common {
             urnProxy,
             wadC
         );
-        // Tack from End to allow fleeing, assumes vaults stakes were tacked to End after skimming
+        // Tack from the End to allow fleeing, assumes vaults' stakes were tacked to the End after skimming
         GemJoinLike(ethJoin).tack(end, urnProxy, wadC);
         // Exits WETH amount to proxy address as a token
         CropperLike(cropper).flee(ethJoin, address(this), wadC);
@@ -795,7 +795,7 @@ contract DssProxyActionsEndCropper is Common {
             urnProxy,
             wadC
         );
-        // Tack from End to allow fleeing, assumes vaults stakes were tacked to End after skimming
+        // Tack from the End to allow fleeing, assumes vaults' stakes were tacked to the End after skimming
         GemJoinLike(gemJoin).tack(end, urnProxy, wadC);
         // Exits token amount to the user's wallet as a token
         uint256 amt = wadC / 10 ** (18 - GemJoinLike(gemJoin).dec());
